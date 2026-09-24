@@ -67,6 +67,7 @@ interface DesktopSalesRoutesProps {
   roznamcha: RoznamchaEntry[];
   onRefreshData?: () => Promise<void>;
   onNavigateTab?: (tab: string) => void;
+  onDeleteOrder?: (orderId: string) => Promise<void>;
 }
 
 export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
@@ -76,6 +77,7 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
   roznamcha,
   onRefreshData,
   onNavigateTab,
+  onDeleteOrder,
 }) => {
   // Routes & Beats state
   const [routes, setRoutes] = useState<SalesRoute[]>([]);

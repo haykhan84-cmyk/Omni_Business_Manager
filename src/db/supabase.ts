@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Customer, Order, OrderItem, Product, RoznamchaEntry } from '../types';
+import { Customer, Employee, Order, OrderItem, Product, RoznamchaEntry } from '../types';
 import { db } from './index';
 
 export const SUPABASE_URL =
@@ -13,8 +13,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export const DEFAULT_TENANT_ID = 'primelink-main';
 
 /**
- * Hardcoded Demo Product IDs (Dalda, Mezan, Tarang, Tapal, Knorr, National, Nestle)
- * Internal demo IDs that must never be created, auto-seeded, or restored.
+ * Hardcoded Demo Product & Customer IDs
+ * Internal demo records that must never be created, auto-seeded, or restored.
  */
 export const HARDCODED_DEMO_PRODUCT_IDS = new Set<string>([
   'prod-dal-01',
@@ -28,7 +28,16 @@ export const HARDCODED_DEMO_PRODUCT_IDS = new Set<string>([
   'prod-unl-442',
 ]);
 
-const DEMO_PREFIXES = [
+export const HARDCODED_DEMO_CUSTOMER_IDS = new Set<string>([
+  'cust-01',
+  'cust-02',
+  'cust-03',
+  'cust-04',
+  'cust-05',
+  'cust-demo-01',
+]);
+
+const DEMO_PRODUCT_PREFIXES = [
   'prod-dal-',
   'prod-dld-',
   'prod-eng-',
@@ -44,22 +53,32 @@ const DEMO_PREFIXES = [
  */
 export function isDemoProduct(id: string, name?: string, brand?: string): boolean {
   if (HARDCODED_DEMO_PRODUCT_IDS.has(id)) return true;
-  for (const prefix of DEMO_PREFIXES) {
+  for (const prefix of DEMO_PRODUCT_PREFIXES) {
     if (id.startsWith(prefix)) return true;
   }
   return false;
 }
 
 /**
- * Persistent Tombstone Registry:
- * Tracks IDs of products permanently deleted by the user so that remote pulls,
+ * Identifies whether a customer is one of the hardcoded internal demo items
+ */
+export function isDemoCustomer(id: string): boolean {
+  return HARDCODED_DEMO_CUSTOMER_IDS.has(id);
+}
+
+/**
+ * Persistent Tombstone Registries:
+ * Tracks IDs of records permanently deleted by the user so that remote pulls,
  * syncs, or app restarts NEVER resurrect them.
  */
 const DELETED_PRODUCT_IDS_KEY = 'omnisales_deleted_product_ids';
+const DELETED_CUSTOMER_IDS_KEY = 'omnisales_deleted_customer_ids';
+const DELETED_ORDER_IDS_KEY = 'omnisales_deleted_order_ids';
+const DELETED_ROZNAMCHA_IDS_KEY = 'omnisales_deleted_roznamcha_ids';
 
-export function getDeletedProductIds(): Set<string> {
+function getTombstoneSet(key: string): Set<string> {
   try {
-    const raw = localStorage.getItem(DELETED_PRODUCT_IDS_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return new Set();
     const arr = JSON.parse(raw);
     return new Set(Array.isArray(arr) ? arr : []);
@@ -68,14 +87,46 @@ export function getDeletedProductIds(): Set<string> {
   }
 }
 
-export function recordDeletedProductId(productId: string): void {
+function recordTombstoneId(key: string, id: string): void {
   try {
-    const set = getDeletedProductIds();
-    set.add(productId);
-    localStorage.setItem(DELETED_PRODUCT_IDS_KEY, JSON.stringify(Array.from(set)));
+    const set = getTombstoneSet(key);
+    set.add(id);
+    localStorage.setItem(key, JSON.stringify(Array.from(set)));
   } catch (e) {
-    console.warn('Failed to record deleted product ID in localStorage:', e);
+    console.warn(`Failed to record tombstone for ${key}:`, e);
   }
+}
+
+export function getDeletedProductIds(): Set<string> {
+  return getTombstoneSet(DELETED_PRODUCT_IDS_KEY);
+}
+
+export function recordDeletedProductId(productId: string): void {
+  recordTombstoneId(DELETED_PRODUCT_IDS_KEY, productId);
+}
+
+export function getDeletedCustomerIds(): Set<string> {
+  return getTombstoneSet(DELETED_CUSTOMER_IDS_KEY);
+}
+
+export function recordDeletedCustomerId(customerId: string): void {
+  recordTombstoneId(DELETED_CUSTOMER_IDS_KEY, customerId);
+}
+
+export function getDeletedOrderIds(): Set<string> {
+  return getTombstoneSet(DELETED_ORDER_IDS_KEY);
+}
+
+export function recordDeletedOrderId(orderId: string): void {
+  recordTombstoneId(DELETED_ORDER_IDS_KEY, orderId);
+}
+
+export function getDeletedRoznamchaIds(): Set<string> {
+  return getTombstoneSet(DELETED_ROZNAMCHA_IDS_KEY);
+}
+
+export function recordDeletedRoznamchaId(entryId: string): void {
+  recordTombstoneId(DELETED_ROZNAMCHA_IDS_KEY, entryId);
 }
 
 /**
@@ -98,19 +149,127 @@ export async function deleteProductFromSupabase(productId: string): Promise<bool
 }
 
 /**
- * Purges internal demo items from local Dexie IndexedDB while strictly
- * preserving 100% of all real user-created products, customers, and orders.
+ * Hard Deletes a customer from remote Supabase table ('customers').
  */
-export async function purgeDemoProductsFromDexie(): Promise<void> {
+export async function deleteCustomerFromSupabase(customerId: string): Promise<boolean> {
+  recordDeletedCustomerId(customerId);
   try {
+    // 1. Delete associated orders in remote Supabase first to maintain FK integrity
+    await supabase.from('sales_orders').delete().eq('customer_id', customerId);
+    // 2. Delete the customer
+    const { error } = await supabase.from('customers').delete().eq('id', customerId);
+    if (error) {
+      console.warn(`[Supabase Delete] Warning deleting customer ${customerId}:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn(`[Supabase Delete] Network error deleting customer ${customerId}:`, err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * Hard Deletes an order from remote Supabase table ('sales_orders').
+ */
+export async function deleteOrderFromSupabase(orderId: string): Promise<boolean> {
+  recordDeletedOrderId(orderId);
+  try {
+    const { error } = await supabase.from('sales_orders').delete().eq('id', orderId);
+    if (error) {
+      console.warn(`[Supabase Delete] Warning deleting order ${orderId}:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn(`[Supabase Delete] Network error deleting order ${orderId}:`, err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * Hard Deletes a roznamcha entry from remote Supabase table ('financial_roznamcha').
+ */
+export async function deleteRoznamchaFromSupabase(entryId: string): Promise<boolean> {
+  recordDeletedRoznamchaId(entryId);
+  try {
+    const { error } = await supabase.from('financial_roznamcha').delete().eq('id', entryId);
+    if (error) {
+      console.warn(`[Supabase Delete] Warning deleting roznamcha ${entryId}:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn(`[Supabase Delete] Network error deleting roznamcha ${entryId}:`, err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * Purges all internal demo items (demo products, demo customers, demo orders)
+ * from local Dexie IndexedDB while strictly preserving 100% of real user records.
+ */
+export async function purgeAllDemoDataFromDexie(): Promise<void> {
+  try {
+    // 1. Purge demo products
     const prods = await db.products.toArray();
-    const demoItems = prods.filter((p) => isDemoProduct(p.id, p.name, p.brand));
-    for (const item of demoItems) {
-      recordDeletedProductId(item.id);
-      await db.products.delete(item.id);
+    for (const p of prods) {
+      if (isDemoProduct(p.id, p.name, p.brand)) {
+        recordDeletedProductId(p.id);
+        await db.products.delete(p.id);
+      }
+    }
+
+    // 2. Purge demo customers (cust-01 to cust-05, cust-demo-01)
+    const custs = await db.customers.toArray();
+    for (const c of custs) {
+      if (isDemoCustomer(c.id)) {
+        recordDeletedCustomerId(c.id);
+        await db.customers.delete(c.id);
+      }
+    }
+
+    // 3. Purge demo orders (orders referencing demo customers or purged demo products)
+    const ords = await db.orders.toArray();
+    for (const o of ords) {
+      const hasDemoCustomer = isDemoCustomer(o.customerId);
+      const hasDemoProduct = (o.items || []).some((it) => isDemoProduct(it.productId));
+      if (hasDemoCustomer || hasDemoProduct) {
+        recordDeletedOrderId(o.id);
+        await db.orders.delete(o.id);
+      }
+    }
+
+    // 4. Purge demo GRN dockets (any docket referencing demo products or mock suppliers)
+    const dockets = await db.grn.toArray();
+    for (const d of dockets) {
+      const hasDemoItem = (d.items || []).some((it: any) => isDemoProduct(it.productId));
+      if (hasDemoItem) {
+        await db.grn.delete(d.id);
+      }
+    }
+
+    // 5. Clean draft cart in localStorage if it contains purged product IDs
+    try {
+      const draftRaw = localStorage.getItem('omnisales_draft_cart');
+      if (draftRaw) {
+        const draft = JSON.parse(draftRaw);
+        let changed = false;
+        for (const k of Object.keys(draft)) {
+          if (isDemoProduct(k) || getDeletedProductIds().has(k)) {
+            delete draft[k];
+            changed = true;
+          }
+        }
+        if (changed) {
+          localStorage.setItem('omnisales_draft_cart', JSON.stringify(draft));
+        }
+      }
+    } catch {
+      // Ignore cart parsing error
     }
   } catch (err) {
-    console.warn('Error purging demo products from Dexie:', err);
+    console.warn('Error purging demo data from Dexie:', err);
   }
 }
 
@@ -229,6 +388,7 @@ export async function syncProductsToSupabase(products: Product[]) {
  * Syncs a customer to Supabase 'customers' table
  */
 export async function syncCustomerToSupabase(customer: Customer) {
+  if (isDemoCustomer(customer.id) || getDeletedCustomerIds().has(customer.id)) return false;
   try {
     const payload = {
       id: customer.id,
@@ -258,7 +418,13 @@ export async function syncCustomerToSupabase(customer: Customer) {
 export async function syncCustomersToSupabase(customers: Customer[]) {
   if (!customers || customers.length === 0) return 0;
   try {
-    const payloads = customers.map((c) => ({
+    const deletedIds = getDeletedCustomerIds();
+    const validCustomers = customers.filter(
+      (c) => !deletedIds.has(c.id) && !isDemoCustomer(c.id)
+    );
+    if (validCustomers.length === 0) return 0;
+
+    const payloads = validCustomers.map((c) => ({
       id: c.id,
       tenant_id: DEFAULT_TENANT_ID,
       shop_name: c.shopName || c.shop_name || 'Retail Store',
@@ -284,6 +450,10 @@ export async function syncCustomersToSupabase(customers: Customer[]) {
  * Syncs a booked order to Supabase 'sales_orders' table
  */
 export async function syncOrderToSupabase(order: Order, customer?: Customer) {
+  const deletedOrderIds = getDeletedOrderIds();
+  if (deletedOrderIds.has(order.id)) return false;
+  if (isDemoCustomer(order.customerId) || getDeletedCustomerIds().has(order.customerId)) return false;
+
   try {
     // 1. Ensure customer exists in Supabase to fulfill foreign key constraint
     if (customer) {
@@ -342,6 +512,7 @@ export async function syncOrderToSupabase(order: Order, customer?: Customer) {
  * Syncs a Roznamcha entry to Supabase 'financial_roznamcha' table
  */
 export async function syncRoznamchaEntryToSupabase(entry: RoznamchaEntry) {
+  if (getDeletedRoznamchaIds().has(entry.id)) return false;
   try {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       entry.id
@@ -499,10 +670,16 @@ export async function pullAndMergeFromSupabase(): Promise<{
     }
 
     // 2. Fetch Remote Customers
+    const deletedCustomerIds = getDeletedCustomerIds();
     const { data: remoteCustomers, error: cErr } = await supabase.from('customers').select('*');
     if (!cErr && Array.isArray(remoteCustomers)) {
       for (const rc of remoteCustomers) {
         if (!rc.id) continue;
+        if (deletedCustomerIds.has(rc.id) || isDemoCustomer(rc.id)) {
+          await db.customers.delete(rc.id);
+          continue;
+        }
+
         const existing = await db.customers.get(rc.id);
         const customerData: Customer = {
           id: rc.id,
@@ -528,13 +705,31 @@ export async function pullAndMergeFromSupabase(): Promise<{
     }
 
     // 3. Fetch Remote Orders
+    const deletedOrderIds = getDeletedOrderIds();
     const { data: remoteOrders, error: oErr } = await supabase.from('sales_orders').select('*');
     if (!oErr && Array.isArray(remoteOrders)) {
       for (const ro of remoteOrders) {
         if (!ro.id) continue;
+        if (deletedOrderIds.has(ro.id)) {
+          await db.orders.delete(ro.id);
+          continue;
+        }
+        if (isDemoCustomer(ro.customer_id) || deletedCustomerIds.has(ro.customer_id)) {
+          await db.orders.delete(ro.id);
+          continue;
+        }
+
         const existing = await db.orders.get(ro.id);
         if (!existing) {
           const itemsList: OrderItem[] = Array.isArray(ro.items) ? ro.items : [];
+          // If order contains deleted or demo product, skip or purge
+          const hasInvalidProd = itemsList.some(
+            (it) => isDemoProduct(it.productId) || deletedIds.has(it.productId)
+          );
+          if (hasInvalidProd) {
+            continue;
+          }
+
           const totalCartons = itemsList.reduce((acc, it) => acc + (Number(it.cartons) || 0), 0);
           const totalPieces = itemsList.reduce((acc, it) => acc + (Number(it.pieces) || 0), 0);
           const totalUnits = itemsList.reduce((acc, it) => acc + (Number(it.totalUnits) || 0), 0);
@@ -571,10 +766,16 @@ export async function pullAndMergeFromSupabase(): Promise<{
     }
 
     // 4. Fetch Remote Roznamcha Entries
+    const deletedRozIds = getDeletedRoznamchaIds();
     const { data: remoteRoz, error: rErr } = await supabase.from('financial_roznamcha').select('*');
     if (!rErr && Array.isArray(remoteRoz)) {
       for (const rr of remoteRoz) {
         if (!rr.id) continue;
+        if (deletedRozIds.has(rr.id)) {
+          await db.roznamcha.delete(rr.id);
+          continue;
+        }
+
         const existing = await db.roznamcha.get(rr.id);
         if (!existing) {
           const isCashIn = rr.type === 'CASH_IN';
@@ -640,4 +841,55 @@ export async function syncBidirectional(): Promise<{
     },
     error: pushRes.error,
   };
+}
+
+/**
+ * Upserts or updates an employee in remote Supabase
+ */
+export async function syncEmployeeToSupabase(emp: Employee): Promise<boolean> {
+  try {
+    const payload = {
+      id: emp.id,
+      tenant_id: emp.tenant_id || DEFAULT_TENANT_ID,
+      name: emp.name,
+      father_name: emp.father_name || null,
+      phone: emp.phone,
+      cnic_number: emp.cnic_number || null,
+      role: emp.role,
+      assigned_route: emp.assigned_route,
+      van_assigned: emp.van_assigned || null,
+      base_salary: emp.base_salary,
+      daily_allowance_rate: emp.daily_allowance_rate,
+      commission_rate: emp.commission_rate,
+      status: emp.status,
+      imei: emp.imei || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('employees').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      console.warn(`[Supabase Employee Sync] Warning:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn(`[Supabase Employee Sync] Network notice:`, err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * Deletes an employee from remote Supabase
+ */
+export async function deleteEmployeeFromSupabase(empId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('employees').delete().eq('id', empId);
+    if (error) {
+      console.warn(`[Supabase Employee Delete] Warning:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn(`[Supabase Employee Delete] Network notice:`, err?.message || err);
+    return false;
+  }
 }

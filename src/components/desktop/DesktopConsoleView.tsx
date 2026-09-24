@@ -45,6 +45,9 @@ interface DesktopConsoleViewProps {
   onAddRoznamchaEntry: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
   onAddCustomer: (customer: Omit<Customer, 'id' | 'currentBalance'>) => Promise<void>;
   onUpdateCustomer: (customer: Customer) => Promise<void>;
+  onDeleteCustomer: (customerId: string) => Promise<void>;
+  onDeleteRoznamchaEntry: (entryId: string) => Promise<void>;
+  onDeleteOrder: (orderId: string) => Promise<void>;
   onReceiveStock: (docket: GRNDocket, lineUpdates: { productId: string; addedCartons: number }[]) => Promise<void>;
   onAddCustomGRN: (docket: Omit<GRNDocket, 'id'>, lineUpdates: { productId: string; addedCartons: number }[]) => Promise<void>;
   onUpdateOpeningCash: (amount: number) => void;
@@ -76,6 +79,9 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
   onAddRoznamchaEntry,
   onAddCustomer,
   onUpdateCustomer,
+  onDeleteCustomer,
+  onDeleteRoznamchaEntry,
+  onDeleteOrder,
   onReceiveStock,
   onAddCustomGRN,
   onUpdateOpeningCash,
@@ -157,6 +163,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             }}
             onAddRoznamchaEntry={onAddRoznamchaEntry}
             onAddProduct={onAddProduct}
+            onDeleteOrder={onDeleteOrder}
           />
         )}
 
@@ -168,6 +175,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             roznamcha={roznamcha}
             onRefreshData={onSyncNow}
             onNavigateTab={(tab) => setActiveTab(tab as any)}
+            onDeleteOrder={onDeleteOrder}
           />
         )}
 
@@ -220,6 +228,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             companyProfile={companyProfile}
             calculatedBankBalance={calculatedBankBalance}
             onAddEntry={onAddRoznamchaEntry}
+            onDeleteRoznamchaEntry={onDeleteRoznamchaEntry}
             onUpdateOpeningCash={onUpdateOpeningCash}
             onUpdateBankAccount={onUpdateBankAccount}
             onUpdateCompanyProfile={onUpdateCompanyProfile}
@@ -233,6 +242,8 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             roznamcha={roznamcha}
             onAddCustomer={onAddCustomer}
             onUpdateCustomer={onUpdateCustomer}
+            onDeleteCustomer={onDeleteCustomer}
+            onDeleteOrder={onDeleteOrder}
           />
         )}
 

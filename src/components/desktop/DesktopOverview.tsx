@@ -55,6 +55,7 @@ interface DesktopOverviewProps {
   ) => void;
   onAddRoznamchaEntry?: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
   onAddProduct?: (product: Omit<Product, 'id'>) => Promise<void>;
+  onDeleteOrder?: (orderId: string) => Promise<void>;
 }
 
 export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
@@ -73,6 +74,7 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
   onNavigateTab,
   onAddRoznamchaEntry,
   onAddProduct,
+  onDeleteOrder,
 }) => {
   // Temporal Filter State
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'quarter' | 'fy'>('today');
@@ -203,25 +205,27 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
         }
       });
 
-    // Provide sensible enterprise distribution fallback if roznamcha empty
     const total = Object.values(map).reduce((a, b) => a + b, 0);
+    const payrollAmt = map['Payroll & Benefits'] || 0;
+    const fleetAmt = map['Fleet & Logistics'] || 0;
+    const facilityAmt = (map['Facility & Maintenance'] || 0) + (map['Other Disbursements'] || 0);
+
     if (total === 0) {
       return [
-        { label: 'Payroll & Benefits', amount: 112500, percent: 58, color: '#ff8000' },
-        { label: 'Fleet Logistics', amount: 48200, percent: 25, color: '#35618d' },
-        { label: 'Cold Facilities', amount: 33500, percent: 17, color: '#43b4a7' },
+        { label: 'Payroll & Wages', amount: 0, percent: 0, color: '#ff8000' },
+        { label: 'Fleet & Fuel', amount: 0, percent: 0, color: '#e11d48' },
+        { label: 'Facility & Maintenance', amount: 0, percent: 0, color: '#10b981' },
       ];
     }
 
-    const payrollAmt = Math.max(1, map['Payroll & Benefits']);
-    const fleetAmt = Math.max(1, map['Fleet & Logistics']);
-    const facilityAmt = Math.max(1, map['Facility & Maintenance'] + map['Other Disbursements']);
-    const totalExp = payrollAmt + fleetAmt + facilityAmt;
+    const pPct = Math.round((payrollAmt / total) * 100);
+    const fPct = Math.round((fleetAmt / total) * 100);
+    const facPct = Math.max(0, 100 - pPct - fPct);
 
     return [
-      { label: 'Payroll & Benefits', amount: payrollAmt, percent: Math.round((payrollAmt / totalExp) * 100), color: '#ff8000' },
-      { label: 'Fleet Logistics', amount: fleetAmt, percent: Math.round((fleetAmt / totalExp) * 100), color: '#35618d' },
-      { label: 'Cold Facilities', amount: facilityAmt, percent: Math.max(1, 100 - Math.round((payrollAmt / totalExp) * 100) - Math.round((fleetAmt / totalExp) * 100)), color: '#43b4a7' },
+      { label: 'Payroll & Wages', amount: payrollAmt, percent: pPct, color: '#ff8000' },
+      { label: 'Fleet & Fuel', amount: fleetAmt, percent: fPct, color: '#e11d48' },
+      { label: 'Facility & Maintenance', amount: facilityAmt, percent: facPct, color: '#10b981' },
     ];
   }, [roznamcha]);
 
@@ -236,7 +240,7 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
   }, [products]);
 
   const totalGRNCartons = useMemo(() => {
-    return grnDockets.reduce((sum, d) => sum + (d.totalReceivedCartons || d.totalOrderedCartons || 0), 0) || 1420;
+    return grnDockets.reduce((sum, d) => sum + (d.totalReceivedCartons || d.totalOrderedCartons || 0), 0);
   }, [grnDockets]);
 
   // Unsynced Outbox Count
@@ -248,51 +252,36 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
 
   // Route Beat Progress
   const routesProgress = useMemo(() => {
-    const predefinedRoutes = [
-      { name: 'Main Bazar (Mingora)', planned: 18, driver: 'Tariq Mehmood (Van 04)' },
-      { name: 'Mingora Bypass & College Rd', planned: 14, driver: 'Zahid Khan (Van 08)' },
-      { name: 'Saidu Sharif Road', planned: 12, driver: 'Rashid Ali (Van 02)' },
-      { name: 'Barikot Beat', planned: 16, driver: 'Tariq Khan (Van 12)' },
-      { name: 'Matta Bazar Rural', planned: 15, driver: 'Irfan Ullah (Van 06)' },
-    ];
+    const routeNames = Array.from(new Set(customers.map((c) => c.route).filter(Boolean)));
+    const allRoutes = routeNames.length > 0 ? routeNames : ['Mingora Central', 'Saidu Sharif', 'Barikot Beat'];
 
-    return predefinedRoutes.map((route) => {
-      const routeOrders = orders.filter((o) => o.route === route.name);
+    return allRoutes.map((routeName, idx) => {
+      const routeOrders = orders.filter((o) => o.route === routeName);
       const bookedCount = routeOrders.length;
-      const routeCustomers = customers.filter((c) => c.route === route.name);
-      const plannedCount = Math.max(route.planned, routeCustomers.length);
+      const routeCustomers = customers.filter((c) => c.route === routeName);
+      const plannedCount = Math.max(1, routeCustomers.length);
       const routeReceivables = routeCustomers.reduce((sum, c) => sum + (c.currentBalance || 0), 0);
       const percent = Math.min(100, Math.round((bookedCount / plannedCount) * 100));
 
       return {
-        ...route,
-        booked: bookedCount,
+        name: routeName,
         planned: plannedCount,
+        driver: `Route Unit ${String(idx + 1).padStart(2, '0')}`,
+        booked: bookedCount,
         percent,
         receivables: routeReceivables,
       };
     });
   }, [orders, customers]);
 
-  // Top 5 Moving SKUs
+  // Top 5 Moving SKUs - Strictly from Real Orders
   const topMovingSKUs = useMemo(() => {
     const skuSalesMap: Record<string, { cartons: number; revenue: number; product: Product }> = {};
 
     orders.forEach((o) => {
       o.items.forEach((item) => {
-        const prod = products.find((p) => p.id === item.productId) || {
-          id: item.productId,
-          sku: item.sku,
-          name: item.productName,
-          brand: 'Prime Brands',
-          category: 'General FMCG',
-          packSize: item.packSize,
-          tradePrice: item.tradePrice,
-          retailPrice: item.unitPrice,
-          cartonStock: 45,
-          piecesStock: 0,
-          minStockAlert: 10,
-        };
+        const prod = products.find((p) => p.id === item.productId);
+        if (!prod) return;
 
         if (!skuSalesMap[item.productId]) {
           skuSalesMap[item.productId] = { cartons: 0, revenue: 0, product: prod };
@@ -303,22 +292,6 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
     });
 
     const list = Object.values(skuSalesMap).sort((a, b) => b.cartons - a.cartons);
-    if (list.length >= 5) return list.slice(0, 5);
-
-    // Fallback fill with highest stock/popular products
-    const existingIds = new Set(list.map((l) => l.product.id));
-    const extraProds = products.filter((p) => !existingIds.has(p.id)).slice(0, 5 - list.length);
-    const mockCounts = [14, 9, 7, 5, 3];
-
-    extraProds.forEach((p, idx) => {
-      const c = mockCounts[idx] || 4;
-      list.push({
-        cartons: c,
-        revenue: c * p.tradePrice,
-        product: p,
-      });
-    });
-
     return list.slice(0, 5);
   }, [orders, products]);
 
@@ -814,7 +787,7 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
               <div className="flex items-baseline justify-between mb-1">
                 <span className="text-xs uppercase text-slate-500 font-bold">Total Verified Outflow</span>
                 <span className="text-xl text-slate-900 font-bold font-mono">
-                  {formatPKR(totalOutflows || 194200)}
+                  {formatPKR(totalOutflows)}
                 </span>
               </div>
               <p className="text-xs text-slate-400">Expenditure accounts cleared for current ledger cycle.</p>
@@ -914,17 +887,21 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
               <div
                 className="w-36 h-36 rounded-full flex items-center justify-center shadow-inner"
                 style={{
-                  background: `conic-gradient(#ff8000 0% ${expenseBreakdown[0].percent}%, #35618d ${expenseBreakdown[0].percent}% ${
-                    expenseBreakdown[0].percent + expenseBreakdown[1].percent
-                  }%, #43b4a7 ${expenseBreakdown[0].percent + expenseBreakdown[1].percent}% 100%)`,
+                  background: totalOutflows > 0
+                    ? `conic-gradient(#ff8000 0% ${expenseBreakdown[0].percent}%, #e11d48 ${expenseBreakdown[0].percent}% ${
+                        expenseBreakdown[0].percent + expenseBreakdown[1].percent
+                      }%, #10b981 ${expenseBreakdown[0].percent + expenseBreakdown[1].percent}% 100%)`
+                    : '#e2e8f0',
                 }}
               >
                 <div className="w-22 h-22 rounded-full bg-white flex flex-col items-center justify-center shadow-sm text-center p-1 border border-slate-100">
                   <span className="text-[10px] uppercase text-slate-400 font-extrabold">Total Out</span>
                   <span className="text-sm font-extrabold font-mono text-slate-900">
-                    Rs. {Math.round((totalOutflows || 194200) / 1000)}k
+                    Rs. {Math.round((totalOutflows || 0) / 1000)}k
                   </span>
-                  <span className="text-[9px] font-bold text-emerald-700">100% Post</span>
+                  <span className="text-[9px] font-bold text-emerald-700">
+                    {totalOutflows > 0 ? '100% Post' : 'No Debits'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1355,31 +1332,37 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
           </div>
 
           <div className="space-y-2.5">
-            {topMovingSKUs.map((item, idx) => (
-              <div
-                key={item.product.id}
-                className="p-2.5 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-6 h-6 rounded-lg bg-slate-800 text-white font-mono font-bold flex items-center justify-center text-xs shrink-0">
-                    {idx + 1}
-                  </span>
-                  <div className="flex flex-col min-w-0">
-                    <span className="font-bold text-slate-900 truncate">{item.product.name}</span>
-                    <span className="text-[10px] text-slate-500 font-mono truncate">
-                      {item.product.sku} • {item.product.brand}
+            {topMovingSKUs.length === 0 ? (
+              <div className="text-center py-6 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400">
+                No SKU sales booked yet today. Book orders to view velocity metrics.
+              </div>
+            ) : (
+              topMovingSKUs.map((item, idx) => (
+                <div
+                  key={item.product.id}
+                  className="p-2.5 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-between text-xs"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="w-6 h-6 rounded-lg bg-slate-800 text-white font-mono font-bold flex items-center justify-center text-xs shrink-0">
+                      {idx + 1}
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-bold text-slate-900 truncate">{item.product.name}</span>
+                      <span className="text-[10px] text-slate-500 font-mono truncate">
+                        {item.product.sku} • {item.product.brand}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end shrink-0 pl-2">
+                    <span className="font-mono font-black text-amber-700">{item.cartons} Ctns</span>
+                    <span className="text-[10px] font-mono font-bold text-slate-600">
+                      {formatPKR(item.revenue)}
                     </span>
                   </div>
                 </div>
-
-                <div className="flex flex-col items-end shrink-0 pl-2">
-                  <span className="font-mono font-black text-amber-700">{item.cartons} Ctns</span>
-                  <span className="text-[10px] font-mono font-bold text-slate-600">
-                    {formatPKR(item.revenue)}
-                  </span>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -1416,7 +1399,14 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {recentActivities.map((act) => (
+              {recentActivities.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-400 text-xs">
+                    No transactions or orders logged yet. Book orders or add cash entries to populate the activity stream.
+                  </td>
+                </tr>
+              ) : (
+                recentActivities.map((act) => (
                 <tr key={act.id} className="hover:bg-slate-50">
                   <td className="py-2.5 px-3">
                     <div className="flex items-center gap-2">
@@ -1478,7 +1468,7 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
                     </span>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

@@ -28,6 +28,8 @@ import {
   Smartphone,
   Award,
   Calculator,
+  Trash2,
+  Edit2,
 } from 'lucide-react';
 import {
   Employee,
@@ -40,6 +42,7 @@ import {
 } from '../../types';
 import { db } from '../../db';
 import { ACTIVE_TENANT_ID } from '../../db/localDb';
+import { syncEmployeeToSupabase, deleteEmployeeFromSupabase } from '../../db/supabase';
 import { formatPKR, formatDate, formatDateTime } from '../../utils/calculations';
 
 interface DesktopStaffAttendanceProps {
@@ -76,6 +79,22 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
   const [showPayslipModal, setShowPayslipModal] = useState<boolean>(false);
   const [selectedEmployeeForPayslip, setSelectedEmployeeForPayslip] = useState<Employee | null>(null);
   const [selectedPayrollForPayslip, setSelectedPayrollForPayslip] = useState<PayrollRecord | null>(null);
+  const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
+
+  const handleConfirmDeleteEmployee = async () => {
+    if (!employeeToDelete) return;
+    try {
+      await db.employees.delete(employeeToDelete.id);
+      await db.staff_attendance.where('employee_id').equals(employeeToDelete.id).delete();
+      await db.salary_advances.where('employee_id').equals(employeeToDelete.id).delete();
+      await deleteEmployeeFromSupabase(employeeToDelete.id);
+      await fetchLocalData();
+    } catch (err) {
+      console.error('Failed to delete employee:', err);
+    } finally {
+      setEmployeeToDelete(null);
+    }
+  };
 
   // Form States
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -86,12 +105,88 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
   const [newEmpPhone, setNewEmpPhone] = useState('');
   const [newEmpCnic, setNewEmpCnic] = useState('');
   const [newEmpRole, setNewEmpRole] = useState<EmployeeRole>('Order Booker / Salesman');
-  const [newEmpRoute, setNewEmpRoute] = useState('Mingora Central');
-  const [newEmpVan, setNewEmpVan] = useState('Van Fleet #04');
+  const [newEmpRoute, setNewEmpRoute] = useState('Main Bazar');
+  const [newEmpVan, setNewEmpVan] = useState('');
   const [newEmpBaseSalary, setNewEmpBaseSalary] = useState('45000');
   const [newEmpAllowanceRate, setNewEmpAllowanceRate] = useState('200');
   const [newEmpCommissionRate, setNewEmpCommissionRate] = useState('1.5');
-  const [newEmpImei, setNewEmpImei] = useState(`86${Math.floor(1000000000000 + Math.random() * 9000000000000)}`);
+  const [newEmpImei, setNewEmpImei] = useState('');
+  const [isAddAdvancedOpen, setIsAddAdvancedOpen] = useState(false);
+
+  // Edit Employee Form State
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [editEmpName, setEditEmpName] = useState('');
+  const [editEmpFatherName, setEditEmpFatherName] = useState('');
+  const [editEmpPhone, setEditEmpPhone] = useState('');
+  const [editEmpCnic, setEditEmpCnic] = useState('');
+  const [editEmpRole, setEditEmpRole] = useState<EmployeeRole>('Order Booker / Salesman');
+  const [editEmpRoute, setEditEmpRoute] = useState('');
+  const [editEmpVan, setEditEmpVan] = useState('');
+  const [editEmpBaseSalary, setEditEmpBaseSalary] = useState('45000');
+  const [editEmpAllowanceRate, setEditEmpAllowanceRate] = useState('200');
+  const [editEmpCommissionRate, setEditEmpCommissionRate] = useState('1.5');
+  const [editEmpStatus, setEditEmpStatus] = useState<'Active' | 'Inactive' | 'On Leave' | 'Resigned'>('Active');
+  const [editEmpImei, setEditEmpImei] = useState('');
+  const [isEditAdvancedOpen, setIsEditAdvancedOpen] = useState(false);
+
+  const handleOpenEditModal = (emp: Employee) => {
+    setEditingEmployee(emp);
+    setEditEmpName(emp.name);
+    setEditEmpFatherName(emp.father_name || '');
+    setEditEmpPhone(emp.phone || '');
+    setEditEmpCnic(emp.cnic_number || '');
+    setEditEmpRole(emp.role);
+    setEditEmpRoute(emp.assigned_route || '');
+    setEditEmpVan(emp.van_assigned || '');
+    setEditEmpBaseSalary(String(emp.base_salary || 0));
+    setEditEmpAllowanceRate(String(emp.daily_allowance_rate || 0));
+    setEditEmpCommissionRate(String(emp.commission_rate || 0));
+    setEditEmpStatus((emp.status as any) || 'Active');
+    setEditEmpImei(emp.imei || '');
+    setIsEditAdvancedOpen(Boolean(emp.imei && emp.imei.trim().length > 0));
+  };
+
+  const handleUpdateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee) return;
+    if (!editEmpName.trim()) {
+      alert('Please enter employee name');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const updatedFields: Partial<Employee> = {
+        name: editEmpName.trim(),
+        father_name: editEmpFatherName.trim() || undefined,
+        phone: editEmpPhone.trim() || '+92 300 0000000',
+        cnic_number: editEmpCnic.trim() || undefined,
+        role: editEmpRole,
+        assigned_route: editEmpRoute.trim() || 'General Market Beat',
+        van_assigned: editEmpVan.trim() || undefined,
+        base_salary: parseFloat(editEmpBaseSalary) || 0,
+        daily_allowance_rate: parseFloat(editEmpAllowanceRate) || 0,
+        commission_rate: parseFloat(editEmpCommissionRate) || 0,
+        status: editEmpStatus as any,
+        imei: editEmpImei.trim() || undefined,
+      };
+
+      await db.employees.update(editingEmployee.id, updatedFields);
+      const updatedFullEmp: Employee = {
+        ...editingEmployee,
+        ...updatedFields,
+      };
+      await syncEmployeeToSupabase(updatedFullEmp);
+      await fetchLocalData();
+
+      setEditingEmployee(null);
+    } catch (err) {
+      console.error('Error updating employee:', err);
+      alert('Failed to update employee profile');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Advance Form State
   const [advanceEmpId, setAdvanceEmpId] = useState<string>('');
@@ -157,21 +252,12 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
   }, [attendanceList, todayStr]);
 
   const todayPresentCount = useMemo(() => {
-    // If not marked today yet, count active employees as checked-in for demo
-    return todayAttendance.length > 0
-      ? todayAttendance.filter((a) => a.status === 'Present' || a.status === 'Half-Day').length
-      : employees.filter((e) => e.status === 'Active').length;
-  }, [todayAttendance, employees]);
+    return todayAttendance.filter((a) => a.status === 'Present' || a.status === 'Half-Day').length;
+  }, [todayAttendance]);
 
   const dailyTADAAccrual = useMemo(() => {
-    if (todayAttendance.length > 0) {
-      return todayAttendance.reduce((sum, a) => sum + (a.allowance || 0), 0);
-    }
-    // Fallback: sum of all active employees' daily allowance rate
-    return employees
-      .filter((e) => e.status === 'Active')
-      .reduce((sum, e) => sum + (e.daily_allowance_rate || 200), 0);
-  }, [todayAttendance, employees]);
+    return todayAttendance.reduce((sum, a) => sum + (a.allowance || 0), 0);
+  }, [todayAttendance]);
 
   // Total Unpaid Advances (Peshgi Pool)
   const totalUnsettledAdvances = useMemo(() => {
@@ -307,23 +393,24 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
     setIsSubmitting(true);
     try {
       const newEmp: Employee = {
-        id: `emp-${Math.floor(100 + Math.random() * 900)}`,
+        id: `emp-${Date.now().toString().slice(-6)}`,
         tenant_id: ACTIVE_TENANT_ID,
         name: newEmpName.trim(),
         father_name: newEmpFatherName.trim() || undefined,
         phone: newEmpPhone.trim() || '+92 300 0000000',
-        cnic_number: newEmpCnic.trim() || '15602-0000000-1',
+        cnic_number: newEmpCnic.trim() || undefined,
         role: newEmpRole,
-        assigned_route: newEmpRoute,
-        van_assigned: newEmpVan,
+        assigned_route: newEmpRoute.trim() || 'General Market Beat',
+        van_assigned: newEmpVan.trim() || undefined,
         base_salary: parseFloat(newEmpBaseSalary) || 40000,
         daily_allowance_rate: parseFloat(newEmpAllowanceRate) || 200,
         commission_rate: parseFloat(newEmpCommissionRate) || 0,
         status: 'Active',
-        imei: newEmpImei.trim(),
+        imei: newEmpImei.trim() || undefined,
       };
 
       await db.employees.add(newEmp);
+      await syncEmployeeToSupabase(newEmp);
       await fetchLocalData();
 
       setShowAddEmployeeModal(false);
@@ -331,6 +418,8 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
       setNewEmpFatherName('');
       setNewEmpPhone('');
       setNewEmpCnic('');
+      setNewEmpImei('');
+      setIsAddAdvancedOpen(false);
     } catch (err) {
       console.error('Error adding employee:', err);
       alert('Failed to register employee');
@@ -865,7 +954,7 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 font-mono text-xs text-emerald-400 font-bold">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>ALL HARDWARE SECURED VIA AES-256 IMEI LOCK</span>
+              <span>ACTIVE FIELD FORCE &amp; DEVICE REGISTRY</span>
             </div>
             <button
               onClick={handleExportPayrollCSV}
@@ -924,9 +1013,22 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                             <span className="text-xs text-slate-900 leading-tight font-extrabold">
                               {emp.name}
                             </span>
-                            <span className="font-mono text-[11px] text-slate-500">
-                              {emp.id.toUpperCase()} • {emp.phone}
-                            </span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono text-[11px] text-slate-500">
+                                {emp.id.toUpperCase()} • {emp.phone}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                  emp.status === 'Active'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : emp.status === 'On Leave'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                {emp.status || 'Active'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -952,15 +1054,22 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
 
                       {/* IMEI & Cryptolock */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-800 font-bold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            <span>{emp.imei || '864209041289104'}</span>
+                        {emp.imei ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-800 font-bold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span>{emp.imei}</span>
+                            </div>
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[9px] font-bold w-fit">
+                              BOUND &amp; VERIFIED
+                            </span>
                           </div>
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[9px] font-bold w-fit">
-                            LOCKED &amp; VERIFIED
-                          </span>
-                        </div>
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-mono text-[11px] text-slate-400 italic">Unassigned</span>
+                            <span className="text-[9px] text-slate-400">Optional Device</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Attendance & TA/DA */}
@@ -996,6 +1105,15 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                       <td className="py-3.5 px-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
+                            onClick={() => handleOpenEditModal(emp)}
+                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 hover:text-amber-900 cursor-pointer transition-colors"
+                            title="Edit Employee Profile"
+                            type="button"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
                             onClick={() => handleOpenPayslip(emp)}
                             className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
                             title="View Employee Payslip / Dossier"
@@ -1026,6 +1144,15 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                             type="button"
                           >
                             <UserCheck className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => setEmployeeToDelete(emp)}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-200 text-rose-600 hover:text-rose-800 cursor-pointer transition-colors"
+                            title="Permanently Delete Staff Profile"
+                            type="button"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -1397,32 +1524,292 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
-                  Device Hardware IMEI (Cryptolock binding)
-                </label>
-                <input
-                  type="text"
-                  value={newEmpImei}
-                  onChange={(e) => setNewEmpImei(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono"
-                />
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsAddAdvancedOpen(!isAddAdvancedOpen)}
+                  className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-amber-800 transition-colors cursor-pointer py-1"
+                >
+                  <span className="font-mono text-sm">{isAddAdvancedOpen ? '▾' : '▸'}</span>
+                  <span>Advanced: Device Binding &amp; Phone IMEI (Optional)</span>
+                </button>
+
+                {isAddAdvancedOpen && (
+                  <div className="mt-2.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[11px] font-bold uppercase text-slate-600">
+                        Device Hardware IMEI (Optional)
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-mono">15-digit TAC hardware code</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={newEmpImei}
+                      onChange={(e) => setNewEmpImei(e.target.value)}
+                      placeholder="e.g. 865432098765432 (Leave blank if unassigned)"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono text-xs bg-white focus:outline-none focus:border-amber-500"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Optional: Binds salesman mobile login to their specific Android handset for GPS geofencing. Can be added or changed at any time.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowAddEmployeeModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold"
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold uppercase shadow-sm"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold uppercase shadow-sm cursor-pointer transition-colors"
                 >
                   Save Employee Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1B: EDIT EMPLOYEE MODAL */}
+      {editingEmployee && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 bg-slate-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-amber-400" />
+                <h3 className="font-extrabold text-sm uppercase">Edit Staff Profile: {editingEmployee.name}</h3>
+              </div>
+              <button
+                onClick={() => setEditingEmployee(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateEmployee} className="p-5 overflow-y-auto space-y-4 text-xs">
+              {/* Full Name & Father's Name */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editEmpName}
+                    onChange={(e) => setEditEmpName(e.target.value)}
+                    placeholder="e.g. Asad Khan"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Father's Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editEmpFatherName}
+                    onChange={(e) => setEditEmpFatherName(e.target.value)}
+                    placeholder="e.g. Ghulam Khan"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* Mobile / WhatsApp Number & CNIC */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Mobile / WhatsApp Number *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editEmpPhone}
+                    onChange={(e) => setEditEmpPhone(e.target.value)}
+                    placeholder="+92 300 1234567"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    CNIC Number
+                  </label>
+                  <input
+                    type="text"
+                    value={editEmpCnic}
+                    onChange={(e) => setEditEmpCnic(e.target.value)}
+                    placeholder="15602-0000000-0"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Role & Assigned Market Route */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Role *
+                  </label>
+                  <select
+                    value={editEmpRole}
+                    onChange={(e) => setEditEmpRole(e.target.value as EmployeeRole)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-bold bg-white"
+                  >
+                    <option value="Order Booker / Salesman">Order Booker / Salesman</option>
+                    <option value="Delivery Driver">Delivery Driver (Van Driver)</option>
+                    <option value="Van Helper / Loader (Mazdoor)">Van Helper / Loader (Mazdoor)</option>
+                    <option value="Recovery Officer">Recovery Officer</option>
+                    <option value="Cashier">Cashier</option>
+                    <option value="Accountant">Accountant</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Assigned Market Route
+                  </label>
+                  <input
+                    type="text"
+                    value={editEmpRoute}
+                    onChange={(e) => setEditEmpRoute(e.target.value)}
+                    placeholder="e.g. Main Bazar, Mingora Bypass, Saidu Sharif"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* Salary, TA/DA Allowance, Commission Rate */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Base Monthly Salary (PKR)
+                  </label>
+                  <input
+                    type="number"
+                    value={editEmpBaseSalary}
+                    onChange={(e) => setEditEmpBaseSalary(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Daily Field Allowance (TA/DA rate)
+                  </label>
+                  <input
+                    type="number"
+                    value={editEmpAllowanceRate}
+                    onChange={(e) => setEditEmpAllowanceRate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Commission Rate (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={editEmpCommissionRate}
+                    onChange={(e) => setEditEmpCommissionRate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Status Toggle (Active / Inactive / On Leave) */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1.5">
+                  Status Toggle
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Active', 'Inactive', 'On Leave'] as const).map((st) => {
+                    const isSelected = editEmpStatus === st;
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setEditEmpStatus(st)}
+                        className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                          isSelected
+                            ? st === 'Active'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : st === 'On Leave'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                              : 'bg-slate-700 text-white border-slate-700 shadow-xs'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            st === 'Active'
+                              ? 'bg-emerald-300'
+                              : st === 'On Leave'
+                              ? 'bg-amber-300'
+                              : 'bg-slate-400'
+                          }`}
+                        />
+                        <span>{st}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Expandable / Collapsible IMEI */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsEditAdvancedOpen(!isEditAdvancedOpen)}
+                  className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-amber-800 transition-colors cursor-pointer py-1"
+                >
+                  <span className="font-mono text-sm">{isEditAdvancedOpen ? '▾' : '▸'}</span>
+                  <span>Advanced: Device Binding &amp; Phone IMEI (Optional)</span>
+                </button>
+
+                {isEditAdvancedOpen && (
+                  <div className="mt-2.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[11px] font-bold uppercase text-slate-600">
+                        Device Hardware IMEI (Optional)
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-mono">15-digit TAC hardware code</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={editEmpImei}
+                      onChange={(e) => setEditEmpImei(e.target.value)}
+                      placeholder="e.g. 865432098765432 (Leave blank if unassigned)"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono text-xs bg-white focus:outline-none focus:border-amber-500"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Optional: Binds salesman mobile login to their specific Android handset for GPS geofencing.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingEmployee(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold uppercase shadow-sm cursor-pointer transition-colors"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>
@@ -1892,6 +2279,54 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
               >
                 <Printer className="w-4 h-4" />
                 <span>Print Official Payslip</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Confirmation Modal: Delete Staff Profile */}
+      {employeeToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 leading-tight">
+                Confirm Deletion
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                Are you sure you want to permanently delete staff member{' '}
+                <strong className="text-slate-900 font-bold">"{employeeToDelete.name}"</strong>{' '}
+                (ID: <span className="font-mono font-bold text-amber-700">{employeeToDelete.id.slice(0, 8)}</span>)?
+                This action cannot be undone.
+              </p>
+              <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Designation / Role:</span>
+                  <span className="font-bold text-slate-800">{employeeToDelete.role}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Assigned Beat:</span>
+                  <span className="font-mono text-slate-700">{employeeToDelete.assigned_route || 'General Dispatch'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEmployeeToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteEmployee}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer"
+              >
+                Permanently Delete
               </button>
             </div>
           </div>

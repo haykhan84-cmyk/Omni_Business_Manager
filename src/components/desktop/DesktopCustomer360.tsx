@@ -30,6 +30,7 @@ import {
   Clock,
   Send,
   Eye,
+  Trash2,
 } from 'lucide-react';
 import { Customer, Order, RoznamchaEntry, CustomerNote, ChannelType, TaxStatus } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
@@ -47,6 +48,8 @@ interface DesktopCustomer360Props {
   roznamcha: RoznamchaEntry[];
   onAddCustomer: (customer: Omit<Customer, 'id' | 'currentBalance'>) => Promise<void>;
   onUpdateCustomer: (customer: Customer) => Promise<void>;
+  onDeleteCustomer?: (customerId: string) => Promise<void>;
+  onDeleteOrder?: (orderId: string) => Promise<void>;
 }
 
 export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
@@ -55,6 +58,8 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   roznamcha,
   onAddCustomer,
   onUpdateCustomer,
+  onDeleteCustomer,
+  onDeleteOrder,
 }) => {
   // Navigation & Segmented Filters
   const [selectedSegment, setSelectedSegment] = useState<
@@ -83,6 +88,8 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [isAdjustLimitModalOpen, setIsAdjustLimitModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
@@ -1225,6 +1232,19 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                             >
                               <Eye className="w-3.5 h-3.5 text-amber-700" />
                             </button>
+
+                            {onDeleteCustomer && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCustomerToDelete(c);
+                                }}
+                                className="p-1 rounded hover:bg-rose-100 text-slate-400 hover:text-rose-600 cursor-pointer transition-colors"
+                                title="Delete Customer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1356,6 +1376,17 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                   </>
                 )}
               </button>
+
+              {onDeleteCustomer && (
+                <button
+                  onClick={() => setCustomerToDelete(selectedCustomer)}
+                  className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-rose-200"
+                  title="Permanently remove customer"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Delete</span>
+                </button>
+              )}
             </div>
 
             {/* PAKISTAN COMPLIANCE & LEGAL PASSPORT */}
@@ -1592,11 +1623,22 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                                 </div>
                               </div>
 
-                              <div className="text-right font-mono">
-                                <div className="font-bold text-slate-900">{formatPKR(o.netBill)}</div>
-                                <div className="text-[10px] text-slate-500">
-                                  {o.paymentType === 'cash' ? 'Cash Spot' : 'Credit Terms'}
+                              <div className="flex items-center gap-2">
+                                <div className="text-right font-mono">
+                                  <div className="font-bold text-slate-900">{formatPKR(o.netBill)}</div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {o.paymentType === 'cash' ? 'Cash Spot' : 'Credit Terms'}
+                                  </div>
                                 </div>
+                                {onDeleteOrder && (
+                                  <button
+                                    onClick={() => setOrderToDelete(o)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                    title="Cancel & Delete Order"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -2240,6 +2282,129 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Confirmation Modal for Customer Deletion */}
+      {customerToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 leading-tight">
+                Confirm Deletion
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                Are you sure you want to permanently remove retailer{' '}
+                <strong className="text-slate-900 font-bold">"{customerToDelete.shopName}"</strong>{' '}
+                ({customerToDelete.name})? This action cannot be undone.
+              </p>
+              <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Assigned Beat / Route:</span>
+                  <span className="font-bold text-slate-800">{customerToDelete.route}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Outstanding Receivable:</span>
+                  <span className="font-mono font-bold text-rose-700">
+                    {formatPKR(customerToDelete.currentBalance)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Contact / WhatsApp:</span>
+                  <span className="font-mono text-slate-700">{customerToDelete.phone}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setCustomerToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (onDeleteCustomer && customerToDelete) {
+                    await onDeleteCustomer(customerToDelete.id);
+                    if (selectedCustomer?.id === customerToDelete.id) {
+                      setSelectedCustomer(null);
+                    }
+                  }
+                  setCustomerToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
+              >
+                Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Confirmation Modal for Order Deletion */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 leading-tight">
+                Confirm Deletion
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                Are you sure you want to cancel and delete Order{' '}
+                <strong className="text-slate-900 font-bold">#{orderToDelete.orderNo}</strong>?
+                This action will restore product inventory stocks and cannot be undone.
+              </p>
+              <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Total Invoice Value:</span>
+                  <span className="font-mono font-bold text-slate-800">
+                    {formatPKR(orderToDelete.netBill)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Cartons / Pieces:</span>
+                  <span className="font-bold text-slate-800">
+                    {orderToDelete.totalCartons} Ctns, {orderToDelete.totalPieces} Pcs
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Booked Route:</span>
+                  <span className="text-slate-800 font-medium">{orderToDelete.route}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setOrderToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (onDeleteOrder && orderToDelete) {
+                    await onDeleteOrder(orderToDelete.id);
+                  }
+                  setOrderToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
+              >
+                Permanently Delete
+              </button>
             </div>
           </div>
         </div>

@@ -236,7 +236,7 @@ export interface Employee {
   base_salary: number;
   daily_allowance_rate: number;
   commission_rate: number;
-  status: 'Active' | 'On Leave' | 'Resigned';
+  status: 'Active' | 'On Leave' | 'Resigned' | 'Inactive';
   imei?: string;
 }
 

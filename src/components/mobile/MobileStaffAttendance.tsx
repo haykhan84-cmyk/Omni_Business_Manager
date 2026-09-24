@@ -39,7 +39,7 @@ export const MobileStaffAttendance: React.FC<MobileStaffAttendanceProps> = ({
   onAddRoznamchaEntry,
   onSelectCustomerForOrder,
 }) => {
-  // Staff profile state (Defaults to Niaz Khan EMP-104)
+  // Staff profile and attendance state
   const [isCheckedIn, setIsCheckedIn] = useState<boolean>(true);
   const [checkInTime, setCheckInTime] = useState<string>('07:45 AM');
   const [showExpenseDrawer, setShowExpenseDrawer] = useState<boolean>(false);
@@ -56,17 +56,19 @@ export const MobileStaffAttendance: React.FC<MobileStaffAttendanceProps> = ({
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatusText, setSyncStatusText] = useState<string>('FORCE INSTANT HQ SYNC');
 
-  // Customer visits progress
+  // Customer visits progress based purely on real live data
   const visitedCustomerIds = new Set(orders.map((o) => o.customerId));
   const visitedCount = visitedCustomerIds.size;
-  const totalRouteCustomers = Math.max(customers.length, 42);
-  const progressPercent = Math.min(100, Math.round((visitedCount / totalRouteCustomers) * 100));
+  const totalRouteCustomers = customers.length;
+  const progressPercent = totalRouteCustomers > 0
+    ? Math.min(100, Math.round((visitedCount / totalRouteCustomers) * 100))
+    : 0;
 
   // Daily TA/DA Allowance Rate
   const dailyAllowance = 200; // Rs. 200/day
   const monthlyAccruedTADA = 5200; // 26 days * 200
   const baseMonthlySalary = 45000;
-  const staffCashAdvance = 5000;
+  const staffCashAdvance = 0;
   const projectedTakeHome = baseMonthlySalary + monthlyAccruedTADA - staffCashAdvance;
 
   const handleToggleCheckIn = () => {
@@ -94,7 +96,7 @@ export const MobileStaffAttendance: React.FC<MobileStaffAttendanceProps> = ({
     try {
       const narrationText = expenseNarration.trim()
         ? expenseNarration.trim()
-        : `${expenseCategory} claim by Niaz Khan (OB-04) on Van #04`;
+        : `${expenseCategory} claim by Field Sales Officer`;
 
       await onAddRoznamchaEntry({
         date: new Date().toISOString(),
@@ -103,7 +105,7 @@ export const MobileStaffAttendance: React.FC<MobileStaffAttendanceProps> = ({
         amount: amountNum,
         slipNo: `EXP-${Math.floor(100 + Math.random() * 900)}`,
         narration: narrationText,
-        recordedBy: 'Niaz Khan (EMP-104)',
+        recordedBy: 'Field Sales Officer (FSO-01)',
       });
 
       setExpenseFeedback(`✓ Recorded Rs. ${amountNum.toLocaleString()} debit in cash register!`);
@@ -139,16 +141,16 @@ export const MobileStaffAttendance: React.FC<MobileStaffAttendanceProps> = ({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-12 h-12 rounded-2xl bg-amber-600 text-white flex items-center justify-center shrink-0 font-bold text-lg shadow-sm">
-              NK
+              FS
             </div>
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-base font-bold text-slate-900 truncate">Niaz Khan</span>
+                <span className="text-base font-bold text-slate-900 truncate">Field Sales Officer</span>
                 <span className="bg-slate-800 text-white text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">
-                  EMP-104
+                  FSO-01
                 </span>
               </div>
-              <span className="text-xs text-slate-500 truncate">Senior Order Booker • Field Division</span>
+              <span className="text-xs text-slate-500 truncate">Live Territory Beat • Field Division</span>
             </div>
           </div>
           <div
@@ -217,8 +219,8 @@ export const MobileStaffAttendance: React.FC<MobileStaffAttendanceProps> = ({
               <Truck className="w-4 h-4" />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="text-[11px] text-slate-500">Logistics Carrier & Driver</span>
-              <span className="text-xs text-slate-900 font-bold truncate">Van #04 • Driver: Tariq Mehmood</span>
+              <span className="text-[11px] text-slate-500">Logistics Carrier & Route</span>
+              <span className="text-xs text-slate-900 font-bold truncate">Route Unit 01 • Active Dispatch</span>
             </div>
           </div>
           <div className="flex items-center gap-2.5 pt-1 border-t border-slate-200/60">
@@ -226,9 +228,9 @@ export const MobileStaffAttendance: React.FC<MobileStaffAttendanceProps> = ({
               <MapPin className="w-4 h-4" />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="text-[11px] text-slate-500">GPS Depot Lockpoint</span>
+              <span className="text-[11px] text-slate-500">GPS Coverage Status</span>
               <span className="font-mono text-xs text-slate-800 font-semibold truncate">
-                34.7717° N, 72.3602° E (Depot Gate 1)
+                Active Field Beat Synchronized
               </span>
             </div>
           </div>
@@ -347,66 +349,43 @@ export const MobileStaffAttendance: React.FC<MobileStaffAttendanceProps> = ({
           ></div>
         </div>
 
-        {/* Customer Dispatch Cards List */}
+        {/* Customer Dispatch Cards List - Strictly Real Live Data */}
         <div className="flex flex-col gap-2 pt-1">
-          {/* Store 1: Al-Madina General Store */}
-          <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl min-h-[48px]">
-            <div className="flex flex-col min-w-0 pr-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-900 truncate">
-                  Madina Cash & Carry Superstore
-                </span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-              </div>
-              <span className="text-[11px] text-slate-500 truncate">
-                Mingora Bazaar • Visited 08:30 AM
-              </span>
+          {orders.length === 0 ? (
+            <div className="text-center py-6 px-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400">
+              No route shop visits logged yet today. Book orders from the catalog to build today's dispatch run.
             </div>
-            <div className="flex flex-col items-end shrink-0">
-              <span className="text-xs font-mono font-bold text-amber-700">Rs. 18,500</span>
-              <span className="text-[10px] font-semibold text-emerald-700">Synced</span>
-            </div>
-          </div>
-
-          {/* Store 2: Barikot Superstore */}
-          <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl min-h-[48px]">
-            <div className="flex flex-col min-w-0 pr-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-900 truncate">
-                  Barikot Superstore & Sons
-                </span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-              </div>
-              <span className="text-[11px] text-slate-500 truncate">
-                Main Road • Visited 09:15 AM
-              </span>
-            </div>
-            <div className="flex flex-col items-end shrink-0">
-              <span className="text-xs font-mono font-bold text-amber-700">Rs. 58,032</span>
-              <span className="text-[10px] font-semibold text-emerald-700">Synced</span>
-            </div>
-          </div>
-
-          {/* Store 3: Pending in Sequence */}
-          <div className="flex items-center justify-between p-3 bg-amber-50/70 border border-amber-200 rounded-xl min-h-[48px]">
-            <div className="flex flex-col min-w-0 pr-2">
-              <span className="text-xs font-bold text-slate-900 truncate">Swat Cash & Carry</span>
-              <span className="text-[11px] text-amber-800 truncate">Square #2 • Next in sequence</span>
-            </div>
-            <button
-              onClick={() => {
-                const target = customers.find((c) => c.shopName.includes('Madina') || c.shopName.includes('Khyber')) || customers[0];
-                if (target && onSelectCustomerForOrder) {
-                  onSelectCustomerForOrder(target);
-                }
-              }}
-              className="min-h-[40px] px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 shrink-0 shadow-sm cursor-pointer"
-              type="button"
-            >
-              <Navigation className="w-3.5 h-3.5" />
-              <span>Navigate</span>
-            </button>
-          </div>
+          ) : (
+            orders.slice(-5).reverse().map((o) => {
+              const cust = customers.find((c) => c.id === o.customerId);
+              return (
+                <div
+                  key={o.id}
+                  className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl min-h-[48px]"
+                >
+                  <div className="flex flex-col min-w-0 pr-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-900 truncate">
+                        {cust?.shopName || 'Retail Customer'}
+                      </span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 truncate">
+                      {cust?.route || 'Main Beat'} • {o.orderNo}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-xs font-mono font-bold text-amber-700">
+                      Rs. {Math.round(o.netBill || 0).toLocaleString()}
+                    </span>
+                    <span className="text-[10px] font-semibold text-emerald-700">
+                      {o.synced ? 'Synced' : 'Local'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </section>
 

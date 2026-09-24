@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import { Customer, Order, RoznamchaCategory, RoznamchaEntry, BankAccount, CompanyProfile } from '../../types';
 import { formatPKR, formatDateTime, formatDate } from '../../utils/calculations';
@@ -45,6 +46,7 @@ interface DesktopRoznamchaProps {
   onUpdateOpeningCash?: (val: number) => void;
   onUpdateBankAccount?: (account: BankAccount) => Promise<void> | void;
   onUpdateCompanyProfile?: (profile: CompanyProfile) => Promise<void> | void;
+  onDeleteRoznamchaEntry?: (entryId: string) => Promise<void>;
 }
 
 export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
@@ -59,6 +61,7 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
   onUpdateOpeningCash,
   onUpdateBankAccount,
   onUpdateCompanyProfile,
+  onDeleteRoznamchaEntry,
 }) => {
   // Configurable Opening Cash State
   const [openingCashState, setOpeningCashState] = useState<number>(openingCash);
@@ -89,6 +92,7 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState<boolean>(false);
   const [selectedVoucherForReceipt, setSelectedVoucherForReceipt] = useState<RoznamchaEntry | null>(null);
   const [selectedVoucherForDetail, setSelectedVoucherForDetail] = useState<RoznamchaEntry | null>(null);
+  const [entryToDelete, setEntryToDelete] = useState<RoznamchaEntry | null>(null);
 
   // Form State for Quick Post / Voucher Entry
   const [entryType, setEntryType] = useState<'cash_in' | 'cash_out'>('cash_out');
@@ -972,6 +976,16 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                             >
                               <Receipt className="w-3.5 h-3.5" />
                             </button>
+                            {onDeleteRoznamchaEntry && (
+                              <button
+                                onClick={() => setEntryToDelete(item)}
+                                className="w-7 h-7 rounded hover:bg-rose-50 flex items-center justify-center text-slate-400 hover:text-rose-600 cursor-pointer transition-colors"
+                                title="Delete Voucher"
+                                type="button"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1705,6 +1719,71 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Confirmation Modal for Roznamcha Entry Deletion */}
+      {entryToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 leading-tight">
+                Confirm Deletion
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                Are you sure you want to permanently remove cash entry of{' '}
+                <strong className="text-slate-900 font-bold">
+                  Rs. {entryToDelete.amount.toLocaleString()}
+                </strong>{' '}
+                ({entryToDelete.category})? This action cannot be undone.
+              </p>
+              <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Slip / Voucher Ref:</span>
+                  <span className="font-mono font-bold text-slate-800">
+                    {entryToDelete.slipNo || entryToDelete.entryNo}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Party / Head:</span>
+                  <span className="font-bold text-slate-800 truncate max-w-[200px]">
+                    {entryToDelete.customerName || 'General Disbursement'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Transaction Type:</span>
+                  <span className="font-bold text-slate-800 capitalize">
+                    {entryToDelete.type === 'cash_in' ? 'Cash In (Credit)' : 'Cash Out (Debit)'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEntryToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (onDeleteRoznamchaEntry && entryToDelete) {
+                    await onDeleteRoznamchaEntry(entryToDelete.id);
+                  }
+                  setEntryToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
+              >
+                Permanently Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

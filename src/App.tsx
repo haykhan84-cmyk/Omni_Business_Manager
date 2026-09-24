@@ -24,8 +24,14 @@ import {
   syncBidirectional,
   pullAndMergeFromSupabase,
   deleteProductFromSupabase,
-  purgeDemoProductsFromDexie,
+  deleteCustomerFromSupabase,
+  deleteOrderFromSupabase,
+  deleteRoznamchaFromSupabase,
+  purgeAllDemoDataFromDexie,
   recordDeletedProductId,
+  recordDeletedCustomerId,
+  recordDeletedOrderId,
+  recordDeletedRoznamchaId,
 } from './db/supabase';
 
 export default function App() {
@@ -104,9 +110,9 @@ export default function App() {
   // Initialize DB, restore records, and listen to online status
   useEffect(() => {
     async function init() {
-      // 0. Ensure internal hardcoded demo items (Dalda, Mezan, Tarang, Tapal, Knorr, National, Nestle)
-      // are purged while preserving 100% of all real user-created products, customers, and orders.
-      await purgeDemoProductsFromDexie();
+      // 0. Ensure all internal hardcoded demo items are purged from local Dexie
+      // while preserving 100% of all real user-created products, customers, and records.
+      await purgeAllDemoDataFromDexie();
 
       // 1. Immediately restore all local records from Dexie IndexedDB
       await refreshData();
@@ -507,7 +513,7 @@ export default function App() {
     await refreshData();
   };
 
-  // Hard delete product from local Dexie.js AND remote Supabase table
+  // Hard delete product from local Dexie.js AND remote Supabase table with cascade clean
   const handleDeleteProduct = async (productId: string) => {
     // 1. Record in local tombstone registry so sync never restores it
     recordDeletedProductId(productId);
@@ -515,7 +521,75 @@ export default function App() {
     // 2. Delete the record from local Dexie.js
     await db.products.delete(productId);
 
-    // 3. Delete the record from remote Supabase table
+    // 3. CASCADE CLEAN: Clean draft cart in localStorage
+    try {
+      const draftRaw = localStorage.getItem('omnisales_draft_cart');
+      if (draftRaw) {
+        const draft = JSON.parse(draftRaw);
+        if (draft[productId]) {
+          delete draft[productId];
+          localStorage.setItem('omnisales_draft_cart', JSON.stringify(draft));
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 4. CASCADE CLEAN: Clean orders referencing this product to prevent orphan items
+    try {
+      const allOrders = await db.orders.toArray();
+      for (const ord of allOrders) {
+        if (ord.items && ord.items.some((it) => it.productId === productId)) {
+          const remainingItems = ord.items.filter((it) => it.productId !== productId);
+          if (remainingItems.length === 0) {
+            recordDeletedOrderId(ord.id);
+            await db.orders.delete(ord.id);
+            if (isOnline) {
+              await deleteOrderFromSupabase(ord.id);
+            }
+          } else {
+            const totalCartons = remainingItems.reduce((acc, it) => acc + (it.cartons || 0), 0);
+            const totalPieces = remainingItems.reduce((acc, it) => acc + (it.pieces || 0), 0);
+            const totalUnits = remainingItems.reduce((acc, it) => acc + (it.totalUnits || 0), 0);
+            const grossBill = remainingItems.reduce((acc, it) => acc + (it.grossTotal || 0), 0);
+            const totalDiscount = remainingItems.reduce((acc, it) => acc + (it.discountAmount || 0), 0);
+            const netBill = remainingItems.reduce((acc, it) => acc + (it.netTotal || 0), 0);
+            const updatedOrder: Order = {
+              ...ord,
+              items: remainingItems,
+              totalCartons,
+              totalPieces,
+              totalUnits,
+              grossBill,
+              totalDiscount,
+              netBill,
+              remainingBalance: Math.max(0, netBill - (ord.cashPaid || 0)),
+            };
+            await db.orders.put(updatedOrder);
+            if (isOnline) {
+              await syncOrderToSupabase(updatedOrder);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error during order cascade clean on product delete:', e);
+    }
+
+    // 5. CASCADE CLEAN: Clean GRN dockets referencing this product
+    try {
+      const allGrn = await db.grn.toArray();
+      for (const docket of allGrn) {
+        if (docket.items && docket.items.some((it) => it.productId === productId)) {
+          const remainingItems = docket.items.filter((it) => it.productId !== productId);
+          await db.grn.update(docket.id, { items: remainingItems });
+        }
+      }
+    } catch (e) {
+      console.warn('Error during GRN cascade clean on product delete:', e);
+    }
+
+    // 6. Delete the record from remote Supabase table
     try {
       await deleteProductFromSupabase(productId);
       fetchSupabaseLiveCounts().then(setSupabaseCounts).catch(() => {});
@@ -524,7 +598,133 @@ export default function App() {
       console.warn('[Supabase Delete] Failed to delete remote product:', err);
     }
 
-    // 4. Refresh local state
+    // 7. Refresh local state
+    await refreshData();
+  };
+
+  // Hard delete customer from local Dexie.js AND remote Supabase table with cascade clean
+  const handleDeleteCustomer = async (customerId: string) => {
+    // 1. Record in local tombstone registry so sync never restores it
+    recordDeletedCustomerId(customerId);
+
+    // 2. Delete customer record from local Dexie
+    await db.customers.delete(customerId);
+
+    // 3. Cascade clean customer notes
+    try {
+      await db.customer_notes.where('customer_id').equals(customerId).delete();
+    } catch {
+      // ignore
+    }
+
+    // 4. Cascade clean sales orders associated with this customer
+    try {
+      const custOrders = await db.orders.where('customerId').equals(customerId).toArray();
+      for (const ord of custOrders) {
+        recordDeletedOrderId(ord.id);
+        await db.orders.delete(ord.id);
+        if (isOnline) {
+          await deleteOrderFromSupabase(ord.id);
+        }
+      }
+    } catch (e) {
+      console.warn('Error cascade cleaning customer orders:', e);
+    }
+
+    // 5. Delete from remote Supabase
+    try {
+      await deleteCustomerFromSupabase(customerId);
+      fetchSupabaseLiveCounts().then(setSupabaseCounts).catch(() => {});
+      setLastSyncedAt(new Date().toISOString());
+    } catch (err) {
+      console.warn('[Supabase Delete] Failed to delete remote customer:', err);
+    }
+
+    // 6. Refresh local state
+    await refreshData();
+  };
+
+  // Hard delete roznamcha entry from local Dexie.js AND remote Supabase
+  const handleDeleteRoznamchaEntry = async (entryId: string) => {
+    recordDeletedRoznamchaId(entryId);
+
+    // If this entry was a customer cash recovery, restore customer's outstanding balance
+    try {
+      const entry = await db.roznamcha.get(entryId);
+      if (entry && entry.type === 'cash_in' && entry.customerId) {
+        const cust = await db.customers.get(entry.customerId);
+        if (cust) {
+          const restoredBal = (cust.currentBalance || 0) + entry.amount;
+          await db.customers.update(entry.customerId, { currentBalance: restoredBal });
+          if (isOnline) {
+            await syncCustomerToSupabase({ ...cust, currentBalance: restoredBal });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error adjusting customer balance on voucher deletion:', e);
+    }
+
+    // Delete from Dexie
+    await db.roznamcha.delete(entryId);
+
+    // Delete from Supabase
+    try {
+      await deleteRoznamchaFromSupabase(entryId);
+      fetchSupabaseLiveCounts().then(setSupabaseCounts).catch(() => {});
+      setLastSyncedAt(new Date().toISOString());
+    } catch (err) {
+      console.warn('[Supabase Delete] Failed to delete remote roznamcha entry:', err);
+    }
+
+    // Refresh state
+    await refreshData();
+  };
+
+  // Hard delete sales order from local Dexie.js AND remote Supabase table
+  const handleDeleteOrder = async (orderId: string) => {
+    recordDeletedOrderId(orderId);
+
+    // Revert inventory stock allocated to this order
+    try {
+      const order = await db.orders.get(orderId);
+      if (order && order.items) {
+        for (const item of order.items) {
+          const prod = await db.products.get(item.productId);
+          if (prod) {
+            const restoredCartons = (prod.cartonStock || 0) + (item.cartons || 0);
+            const restoredPieces = (prod.piecesStock || 0) + (item.pieces || 0);
+            await db.products.update(item.productId, {
+              cartonStock: restoredCartons,
+              piecesStock: restoredPieces,
+            });
+            if (isOnline) {
+              await syncProductToSupabase({
+                ...prod,
+                cartonStock: restoredCartons,
+                piecesStock: restoredPieces,
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error reverting product stock on order deletion:', e);
+    }
+
+    // Delete from Dexie
+    await db.orders.delete(orderId);
+
+    // Delete from Supabase
+    try {
+      await deleteOrderFromSupabase(orderId);
+      fetchSupabaseLiveCounts().then(setSupabaseCounts).catch(() => {});
+      setLastSyncedAt(new Date().toISOString());
+    } catch (err) {
+      console.warn('[Supabase Delete] Failed to delete remote order:', err);
+    }
+
+    // Refresh state
     await refreshData();
   };
 
@@ -679,6 +879,8 @@ export default function App() {
             onSaveOrder={handleSaveOrder}
             onAddRoznamchaEntry={handleAddRoznamchaEntry}
             onAddCustomer={handleAddCustomer}
+            onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
+            onDeleteOrder={handleDeleteOrder}
           />
         ) : (
           <DesktopConsoleView
@@ -703,6 +905,9 @@ export default function App() {
             onAddRoznamchaEntry={handleAddRoznamchaEntry}
             onAddCustomer={handleAddCustomer}
             onUpdateCustomer={handleUpdateCustomer}
+            onDeleteCustomer={handleDeleteCustomer}
+            onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
+            onDeleteOrder={handleDeleteOrder}
             onReceiveStock={handleReceiveStock}
             onAddCustomGRN={handleAddCustomGRN}
             onUpdateOpeningCash={handleUpdateOpeningCash}

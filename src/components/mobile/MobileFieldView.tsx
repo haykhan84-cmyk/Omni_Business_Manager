@@ -18,6 +18,8 @@ interface MobileFieldViewProps {
   onSaveOrder: (order: Order, cashCollected: number) => Promise<void>;
   onAddRoznamchaEntry: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
   onAddCustomer: (customer: Omit<Customer, 'id' | 'currentBalance'>) => Promise<void>;
+  onDeleteRoznamchaEntry?: (entryId: string) => Promise<void>;
+  onDeleteOrder?: (orderId: string) => Promise<void>;
 }
 
 export const MobileFieldView: React.FC<MobileFieldViewProps> = ({
@@ -31,6 +33,8 @@ export const MobileFieldView: React.FC<MobileFieldViewProps> = ({
   onSaveOrder,
   onAddRoznamchaEntry,
   onAddCustomer,
+  onDeleteRoznamchaEntry,
+  onDeleteOrder,
 }) => {
   const [activeTab, setActiveTab] = useState<'attendance' | 'booking' | 'roznamcha' | 'clients' | 'print'>('attendance');
 
@@ -47,16 +51,16 @@ export const MobileFieldView: React.FC<MobileFieldViewProps> = ({
       <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center font-bold text-white text-xs">
-            NK
+            FS
           </div>
           <div>
             <div className="text-xs font-bold leading-tight flex items-center gap-1.5">
-              <span>Niaz Khan</span>
+              <span>Field Sales Officer</span>
               <span className="text-[10px] font-mono px-1 rounded bg-slate-800 text-amber-400">
-                EMP-104
+                FSO-01
               </span>
             </div>
-            <div className="text-[10px] text-slate-400">Van #04 • Mingora Route #04</div>
+            <div className="text-[10px] text-slate-400">Live Territory Beat • Active Dispatch</div>
           </div>
         </div>
 
@@ -97,6 +101,7 @@ export const MobileFieldView: React.FC<MobileFieldViewProps> = ({
             cashInHand={cashInHand}
             openingCash={openingCash}
             onAddEntry={onAddRoznamchaEntry}
+            onDeleteEntry={onDeleteRoznamchaEntry}
             isOnline={isOnline}
           />
         )}

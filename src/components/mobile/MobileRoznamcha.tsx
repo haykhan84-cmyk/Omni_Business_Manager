@@ -12,6 +12,7 @@ import {
   Coins,
   ShieldCheck,
   Building,
+  Trash2,
 } from 'lucide-react';
 import { Customer, RoznamchaCategory, RoznamchaEntry } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
@@ -22,6 +23,7 @@ interface MobileRoznamchaProps {
   cashInHand: number;
   openingCash: number;
   onAddEntry: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
+  onDeleteEntry?: (entryId: string) => Promise<void>;
   isOnline: boolean;
 }
 
@@ -31,6 +33,7 @@ export const MobileRoznamcha: React.FC<MobileRoznamchaProps> = ({
   cashInHand,
   openingCash,
   onAddEntry,
+  onDeleteEntry,
   isOnline,
 }) => {
   const [entryType, setEntryType] = useState<'cash_in' | 'cash_out'>('cash_in');
@@ -41,6 +44,7 @@ export const MobileRoznamcha: React.FC<MobileRoznamchaProps> = ({
   const [narration, setNarration] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [entryToDelete, setEntryToDelete] = useState<RoznamchaEntry | null>(null);
 
   // Sync category if entry type switches
   const handleTypeSwitch = (type: 'cash_in' | 'cash_out') => {
@@ -409,15 +413,32 @@ export const MobileRoznamcha: React.FC<MobileRoznamchaProps> = ({
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <span
-                      className={`font-mono font-extrabold text-sm ${
-                        isIn ? 'text-emerald-600' : 'text-rose-600'
-                      }`}
-                    >
-                      {isIn ? '+' : '-'}
-                      {formatPKR(entry.amount)}
-                    </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <span
+                        className={`font-mono font-extrabold text-sm ${
+                          isIn ? 'text-emerald-600' : 'text-rose-600'
+                        }`}
+                      >
+                        {isIn ? '+' : '-'}
+                        {formatPKR(entry.amount)}
+                      </span>
+                    </div>
+
+                    {onDeleteEntry && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEntryToDelete(entry);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        title="Delete entry"
+                        aria-label="Delete entry"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -425,6 +446,65 @@ export const MobileRoznamcha: React.FC<MobileRoznamchaProps> = ({
           )}
         </div>
       </div>
+
+      {/* Safety Confirmation Modal */}
+      {entryToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full border border-slate-200 overflow-hidden">
+            <div className="p-5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-3">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-slate-900 leading-tight">
+                Confirm Deletion
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                Are you sure you want to permanently remove cash entry of{' '}
+                <strong className="text-slate-900 font-bold">
+                  Rs. {entryToDelete.amount.toLocaleString()}
+                </strong>{' '}
+                ({entryToDelete.category})? This action cannot be undone.
+              </p>
+              <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Slip / Ref:</span>
+                  <span className="font-mono font-bold text-slate-800">
+                    {entryToDelete.slipNo || entryToDelete.entryNo}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Party / Entity:</span>
+                  <span className="font-bold text-slate-800 truncate max-w-[180px]">
+                    {entryToDelete.customerName || 'Operational Expense'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEntryToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (onDeleteEntry && entryToDelete) {
+                    await onDeleteEntry(entryToDelete.id);
+                  }
+                  setEntryToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
+              >
+                Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

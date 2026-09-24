@@ -702,13 +702,13 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                           <div>
                             <span className="text-slate-500">Route Van:</span>{' '}
                             <span className="font-semibold text-slate-900">
-                              {selectedOrder?.route || 'Mingora City #04 (Tariq M.)'}
+                              {selectedOrder?.route || 'Assigned Route'}
                             </span>
                           </div>
                           <div>
                             <span className="text-slate-500">Order Booker:</span>{' '}
                             <span className="font-semibold text-slate-900">
-                              Niaz Khan (OB-104)
+                              Field Order Booker
                             </span>
                           </div>
                         </div>
@@ -947,7 +947,7 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
 
                       <div className="flex flex-col items-center justify-end">
                         <div className="w-full border-b border-dashed border-slate-400 h-10 mb-1 flex items-center justify-center font-mono text-[9px] text-emerald-700 italic">
-                          Verified: Niaz Khan (14:35)
+                          Verified &amp; Signed
                         </div>
                         <span className="font-bold text-slate-900 uppercase">
                           Order Booker / Cashier
