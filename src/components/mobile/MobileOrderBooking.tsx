@@ -19,7 +19,7 @@ import {
   Package,
 } from 'lucide-react';
 import { Customer, Order, OrderItem, Product, SalesRoute, RouteStop, ZeroSaleCall } from '../../types';
-import { calculateOrderItem, formatPKR } from '../../utils/calculations';
+import { calculateOrderItem, formatPKR, formatAmount, formatRate } from '../../utils/calculations';
 import { Thermal80mmReceipt } from '../shared/PrintTemplates';
 import { getTenantRoutes, getTenantRouteStops, logZeroSaleCall, ACTIVE_TENANT_ID } from '../../db/localDb';
 
@@ -214,11 +214,15 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
       const prod = products.find((p) => p.id === prodId);
       if (!prod) continue;
 
+      // Switch billing rate to Retail Selling Price
+      const billingRate =
+        prod.retailPrice && prod.retailPrice > 0 ? prod.retailPrice : (prod.tradePrice || 0);
+
       const calc = calculateOrderItem(
         qty.cartons,
         qty.pieces,
         prod.packSize,
-        prod.tradePrice,
+        billingRate,
         qty.discountPercent
       );
 
@@ -230,7 +234,8 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
         cartons: qty.cartons,
         pieces: qty.pieces,
         totalUnits: calc.totalUnits,
-        tradePrice: prod.tradePrice,
+        tradePrice: billingRate,
+        retailPrice: billingRate,
         unitPrice: calc.unitPrice,
         grossTotal: calc.grossTotal,
         discountPercent: qty.discountPercent,
@@ -417,14 +422,14 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
           <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
             <div className="bg-slate-800/60 p-2 rounded-lg">
               <span className="text-slate-400 block text-[10px] uppercase font-bold">Outstanding</span>
-              <span className="font-mono font-bold text-amber-400 text-sm">
-                {formatPKR(selectedCustomer.currentBalance)}
+              <span className="font-mono font-bold text-amber-400 text-sm whitespace-nowrap">
+                {formatAmount(selectedCustomer.currentBalance)}
               </span>
             </div>
             <div className="bg-slate-800/60 p-2 rounded-lg">
               <span className="text-slate-400 block text-[10px] uppercase font-bold">Credit Limit</span>
-              <span className="font-mono font-semibold text-slate-200">
-                {formatPKR(selectedCustomer.creditLimit)}
+              <span className="font-mono font-semibold text-slate-200 whitespace-nowrap">
+                {formatAmount(selectedCustomer.creditLimit)}
               </span>
             </div>
             <div className="bg-slate-800/60 p-2 rounded-lg">
@@ -550,8 +555,8 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
           <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
           <div>
             <span className="font-bold block">Credit Limit Warning!</span>
-            Projected balance after this order ({formatPKR(projectedBalance)}) exceeds the authorized limit of{' '}
-            {formatPKR(customerCreditLimit)}. Collect on-spot cash to proceed smoothly.
+            Projected balance after this order (<span className="whitespace-nowrap font-mono">{formatAmount(projectedBalance)}</span>) exceeds the authorized limit of{' '}
+            <span className="whitespace-nowrap font-mono">{formatAmount(customerCreditLimit)}</span>. Collect on-spot cash to proceed smoothly.
           </div>
         </div>
       )}
@@ -562,7 +567,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search SKU, Brand, Dalda, Tapal, Barcode..."
+            placeholder="Search SKU, Brand, Product Name, Barcode..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-amber-500 shadow-sm"
@@ -601,10 +606,17 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
 
         {filteredProducts.map((product) => {
           const qty = cartQuantities[product.id] || { cartons: 0, pieces: 0, discountPercent: 0 };
-          const itemUnits = qty.cartons * product.packSize + qty.pieces;
-          const unitPrice = product.tradePrice / product.packSize;
-          const itemGross = itemUnits * unitPrice;
-          const itemNet = itemGross - (itemGross * qty.discountPercent) / 100;
+          const retailPrice =
+            product.retailPrice && product.retailPrice > 0
+              ? product.retailPrice
+              : product.tradePrice || 0;
+          const packSize = Math.max(1, product.packSize || 1);
+          const unitRetailRate = retailPrice / packSize;
+          const itemUnits = qty.cartons * packSize + qty.pieces;
+          const lineTotal = qty.cartons * retailPrice + qty.pieces * unitRetailRate;
+          const discountPct = Math.max(0, Math.min(100, qty.discountPercent || 0));
+          const discountAmt = (lineTotal * discountPct) / 100;
+          const itemNet = lineTotal - discountAmt;
           const isSelected = itemUnits > 0;
 
           return (
@@ -637,14 +649,15 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
 
                 {/* Pricing & Stock */}
                 <div className="text-right shrink-0">
-                  <div className="text-sm font-extrabold font-mono text-slate-900">
-                    {formatPKR(product.tradePrice)}
+                  <div className="text-sm font-extrabold font-mono text-slate-900 whitespace-nowrap">
+                    {formatAmount(retailPrice)}
                     <span className="text-[10px] font-normal text-slate-500"> /ctn</span>
                   </div>
-                  <div className="text-[11px] font-mono text-slate-600">
-                    Unit: {formatPKR(unitPrice)}
+                  <div className="text-[11px] font-mono text-slate-600 whitespace-nowrap">
+                    {formatRate(unitRetailRate)}
+                    <span className="text-[10px] text-slate-500"> /pc</span>
                   </div>
-                  <div className="text-[10px] text-emerald-700 font-bold mt-0.5">
+                  <div className="text-[10px] text-emerald-700 font-bold mt-0.5 whitespace-nowrap">
                     Stock: {product.cartonStock} Ctn
                   </div>
                 </div>
@@ -656,7 +669,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                 <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80 flex flex-col justify-between">
                   <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 mb-1">
                     <span>Cartons</span>
-                    <span className="font-mono text-slate-400">({product.packSize}x)</span>
+                    <span className="font-mono text-slate-400 whitespace-nowrap">({product.packSize}x)</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <button
@@ -665,7 +678,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
-                    <span className="font-mono font-extrabold text-base text-slate-900 px-2">
+                    <span className="font-mono font-extrabold text-base text-slate-900 px-2 whitespace-nowrap">
                       {qty.cartons}
                     </span>
                     <button
@@ -681,7 +694,9 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                 <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80 flex flex-col justify-between">
                   <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 mb-1">
                     <span>Loose Pieces</span>
-                    <span className="font-mono text-slate-400">(@{Math.round(unitPrice)})</span>
+                    <span className="font-mono text-slate-400 whitespace-nowrap">
+                      (@{formatRate(unitRetailRate)}/pc)
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <button
@@ -690,7 +705,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
-                    <span className="font-mono font-extrabold text-base text-slate-900 px-2">
+                    <span className="font-mono font-extrabold text-base text-slate-900 px-2 whitespace-nowrap">
                       {qty.pieces}
                     </span>
                     <button
@@ -706,8 +721,8 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               {/* Item Math & Discount Summary if selected */}
               {isSelected && (
                 <div className="mt-2.5 pt-2 border-t border-dashed border-amber-300 bg-amber-50/70 p-2 rounded-lg flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] text-amber-900">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-[11px] text-amber-900 whitespace-nowrap">
                       Total Units: <strong>{itemUnits}</strong> ({qty.cartons}c + {qty.pieces}p)
                     </span>
                     <div className="flex items-center gap-1">
@@ -726,8 +741,8 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                       />
                     </div>
                   </div>
-                  <div className="font-mono font-black text-amber-950 text-sm">
-                    {formatPKR(itemNet)}
+                  <div className="font-mono font-black text-amber-950 text-sm whitespace-nowrap">
+                    {formatAmount(itemNet)}
                   </div>
                 </div>
               )}
@@ -742,17 +757,17 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
           <div className="max-w-lg mx-auto space-y-2.5">
             {/* Quick Math Breakdown */}
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-300">
+              <span className="text-slate-300 whitespace-nowrap">
                 Units: <strong className="text-white">{totalUnits}</strong> ({totalCartons} Ctn / {totalPieces} Pcs)
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 whitespace-nowrap">
                 {totalDiscount > 0 && (
-                  <span className="text-rose-400 font-mono text-[11px]">
-                    Disc: -{formatPKR(totalDiscount)}
+                  <span className="text-rose-400 font-mono text-[11px] whitespace-nowrap">
+                    Disc: -{formatAmount(totalDiscount)}
                   </span>
                 )}
-                <span className="font-mono text-base font-black text-amber-400">
-                  Net: {formatPKR(netBill)}
+                <span className="font-mono text-base font-black text-amber-400 whitespace-nowrap">
+                  Net: {formatAmount(netBill)}
                 </span>
               </div>
             </div>
@@ -797,7 +812,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
             {/* Partial Cash Input */}
             {paymentType === 'partial' && (
               <div className="flex items-center gap-2 bg-slate-800 p-2 rounded-lg text-xs">
-                <span className="text-slate-300 text-[11px] shrink-0">Cash Collected:</span>
+                <span className="text-slate-300 text-[11px] shrink-0 whitespace-nowrap">Cash Collected:</span>
                 <input
                   type="number"
                   value={cashCollected || ''}
@@ -805,8 +820,8 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                   placeholder="e.g. 20000"
                   className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 font-mono text-emerald-400 font-bold focus:outline-none"
                 />
-                <span className="text-slate-400 font-mono text-[10px] shrink-0">
-                  Bal: {formatPKR(Math.max(0, netBill - cashCollected))}
+                <span className="text-slate-400 font-mono text-[10px] shrink-0 whitespace-nowrap">
+                  Bal: {formatAmount(Math.max(0, netBill - cashCollected))}
                 </span>
               </div>
             )}
@@ -818,10 +833,10 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               className="w-full min-h-[48px] bg-amber-600 hover:bg-amber-500 active:scale-98 text-white font-extrabold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
             >
               <ShoppingCart className="w-5 h-5" />
-              <span>
+              <span className="whitespace-nowrap">
                 {isSaving
                   ? 'Saving to IndexedDB...'
-                  : `Book Order (${formatPKR(netBill)})`}
+                  : `Book Order (${formatAmount(netBill)})`}
               </span>
             </button>
           </div>
@@ -855,7 +870,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
             <div className="bg-emerald-50 text-emerald-800 text-xs p-3 rounded-xl border border-emerald-200">
               Order committed to <strong>Dexie.js (IndexedDB)</strong> with SHA-256 integrity hash.
               {savedOrder.cashPaid > 0 && (
-                <span> Auto-logged <strong>{formatPKR(savedOrder.cashPaid)}</strong> to Field Roznamcha!</span>
+                <span> Auto-logged <strong className="whitespace-nowrap font-mono">{formatAmount(savedOrder.cashPaid)}</strong> to Field Roznamcha!</span>
               )}
             </div>
 

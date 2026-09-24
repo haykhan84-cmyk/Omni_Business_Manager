@@ -99,9 +99,10 @@ export interface OrderItem {
   cartons: number;
   pieces: number;
   totalUnits: number; // (cartons * packSize) + pieces
-  tradePrice: number; // Carton price
-  unitPrice: number; // tradePrice / packSize
-  grossTotal: number; // totalUnits * (tradePrice / packSize)
+  tradePrice: number; // Carton billing price (uses Retail Price for booking)
+  retailPrice?: number; // Retail selling price per carton
+  unitPrice: number; // Unit rate (retailPrice / packSize)
+  grossTotal: number; // (cartons * retailPrice) + (pieces * unitPrice)
   discountPercent: number;
   discountAmount: number;
   netTotal: number; // grossTotal - discountAmount

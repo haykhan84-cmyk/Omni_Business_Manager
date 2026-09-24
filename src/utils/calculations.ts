@@ -3,15 +3,15 @@ import { OrderItem } from '../types';
 /**
  * Calculates item totals strictly adhering to FMCG ERP rules:
  * Total Units = (Cartons * PackSize) + Pieces
- * Unit Price = Trade Price / PackSize
- * Gross Total = Total Units * (Trade Price / PackSize)
- * Net Total = Gross Total - Discount
+ * Unit Price = Price / PackSize
+ * Line Total = (Cartons * Price) + (Pieces * Unit Price)
+ * Net Total = Line Total - Discount
  */
 export function calculateOrderItem(
   cartons: number,
   pieces: number,
   packSize: number,
-  tradePrice: number,
+  price: number,
   discountPercent: number = 0
 ): {
   totalUnits: number;
@@ -23,12 +23,12 @@ export function calculateOrderItem(
   const safeCartons = Math.max(0, cartons || 0);
   const safePieces = Math.max(0, pieces || 0);
   const safePackSize = Math.max(1, packSize || 1);
-  const safeTradePrice = Math.max(0, tradePrice || 0);
+  const safePrice = Math.max(0, price || 0);
   const safeDiscountPct = Math.max(0, Math.min(100, discountPercent || 0));
 
   const totalUnits = safeCartons * safePackSize + safePieces;
-  const unitPrice = safeTradePrice / safePackSize;
-  const grossTotal = totalUnits * unitPrice;
+  const unitPrice = safePrice / safePackSize;
+  const grossTotal = safeCartons * safePrice + safePieces * unitPrice;
   const discountAmount = (grossTotal * safeDiscountPct) / 100;
   const netTotal = grossTotal - discountAmount;
 
@@ -39,6 +39,24 @@ export function calculateOrderItem(
     discountAmount: Math.round(discountAmount * 100) / 100,
     netTotal: Math.round(netTotal * 100) / 100,
   };
+}
+
+/**
+ * Format amount cleanly without bulky "Rs." prefix (e.g. 2,736)
+ */
+export function formatAmount(val: number): string {
+  if (val === undefined || val === null || isNaN(val)) return '0';
+  return Math.round(val).toLocaleString('en-PK');
+}
+
+/**
+ * Format unit rate cleanly without bulky "Rs." prefix, with clean decimals if fractional
+ */
+export function formatRate(val: number): string {
+  if (val === undefined || val === null || isNaN(val)) return '0';
+  return Number.isInteger(val)
+    ? val.toLocaleString('en-PK')
+    : val.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 /**
