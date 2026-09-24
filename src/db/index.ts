@@ -16,6 +16,8 @@ import {
   RouteStop,
   ZeroSaleCall,
   CustomerNote,
+  BankAccount,
+  CompanyProfile,
 } from '../types';
 
 export class OmniSalesDB extends Dexie {
@@ -35,10 +37,11 @@ export class OmniSalesDB extends Dexie {
   route_stops!: Table<RouteStop, number>;
   zero_sales!: Table<ZeroSaleCall, number>;
   customer_notes!: Table<CustomerNote, number>;
+  bank_accounts!: Table<BankAccount, string>;
 
   constructor() {
     super('OmniSalesERP_DB');
-    this.version(6).stores({
+    this.version(7).stores({
       products: 'id, sku, brand, name, category',
       customers: 'id, tenant_id, shop_name, owner_name, route_id, phone, credit_limit, current_balance, status, name, shopName, route',
       customer_notes: '++id, tenant_id, customer_id, note_date, text',
@@ -55,11 +58,39 @@ export class OmniSalesDB extends Dexie {
       routes: 'id, tenant_id, route_code, route_name, assigned_booker_id, status',
       route_stops: '++id, tenant_id, route_id, customer_id, stop_sequence',
       zero_sales: '++id, tenant_id, route_id, customer_id, date, reason',
+      bank_accounts: 'id, bankName, accountNumber, iban, raastId, isPrimary',
     });
   }
 }
 
 export const db = new OmniSalesDB();
+
+export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
+  companyName: 'PrimeLink Distribution & Logistics',
+  tradingName: 'PrimeLink Enterprises',
+  proprietor: 'Haji Noor Mohammad',
+  phone: '0300-9821450',
+  email: 'accounts@primelink.com.pk',
+  address: 'Main Bypass & Gate 1 Wholesale Market',
+  city: 'Mingora, Swat',
+  ntn: '7291048-2',
+  strn: '327787612345',
+  drugLicenseNo: 'DL-SWAT-2024-9812',
+  tagline: 'Authorized FMCG & Pharma Distributors',
+};
+
+export const INITIAL_BANK_ACCOUNT: BankAccount = {
+  id: 'bank-al-habib-01',
+  bankName: 'Bank AL Habib',
+  accountTitle: 'PrimeLink Enterprises',
+  accountNumber: '1023-0981-002341-01',
+  iban: 'PK52BAHL1023098100234101',
+  branchName: 'Mingora City Branch, Swat',
+  raastId: '03009821450',
+  openingBalance: 0,
+  currentBalance: 0,
+  isPrimary: true,
+};
 
 // 100% Clean Slate: All initial lists are empty arrays
 export const INITIAL_PRODUCTS: Product[] = [];
@@ -155,6 +186,7 @@ export async function clearAllDatabaseData(): Promise<void> {
     db.routes.clear(),
     db.route_stops.clear(),
     db.zero_sales.clear(),
+    db.bank_accounts.clear(),
   ]);
   localStorage.removeItem('omnisales_opening_cash');
   localStorage.setItem('omnisales_clean_slate_v2', 'true');

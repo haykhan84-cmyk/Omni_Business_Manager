@@ -51,7 +51,7 @@ interface DesktopOverviewProps {
   onSyncNow?: () => Promise<void>;
   onSwitchToMobile?: () => void;
   onNavigateTab: (
-    tab: 'overview' | 'sales_routes' | 'reports' | 'inventory_grn' | 'catalog' | 'roznamcha' | 'customers' | 'staff_attendance' | 'print'
+    tab: 'overview' | 'sales_routes' | 'reports' | 'inventory_grn' | 'catalog' | 'roznamcha' | 'customers' | 'staff_attendance' | 'print' | 'settings'
   ) => void;
   onAddRoznamchaEntry?: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
   onAddProduct?: (product: Omit<Product, 'id'>) => Promise<void>;

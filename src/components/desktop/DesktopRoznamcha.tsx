@@ -30,7 +30,7 @@ import {
   AlertTriangle,
   Lock,
 } from 'lucide-react';
-import { Customer, Order, RoznamchaCategory, RoznamchaEntry } from '../../types';
+import { Customer, Order, RoznamchaCategory, RoznamchaEntry, BankAccount, CompanyProfile } from '../../types';
 import { formatPKR, formatDateTime, formatDate } from '../../utils/calculations';
 
 interface DesktopRoznamchaProps {
@@ -38,8 +38,13 @@ interface DesktopRoznamchaProps {
   customers: Customer[];
   orders?: Order[];
   openingCash: number;
+  bankAccount?: BankAccount;
+  companyProfile?: CompanyProfile;
+  calculatedBankBalance?: number;
   onAddEntry: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
   onUpdateOpeningCash?: (val: number) => void;
+  onUpdateBankAccount?: (account: BankAccount) => Promise<void> | void;
+  onUpdateCompanyProfile?: (profile: CompanyProfile) => Promise<void> | void;
 }
 
 export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
@@ -47,8 +52,13 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
   customers,
   orders = [],
   openingCash,
+  bankAccount,
+  companyProfile,
+  calculatedBankBalance,
   onAddEntry,
   onUpdateOpeningCash,
+  onUpdateBankAccount,
+  onUpdateCompanyProfile,
 }) => {
   // Configurable Opening Cash State
   const [openingCashState, setOpeningCashState] = useState<number>(openingCash);
@@ -503,8 +513,10 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
               </div>
             </div>
             <div className="mt-3 pt-2 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl flex items-center justify-between text-[11px] font-bold text-slate-600">
-              <span>Habib Bank: Rs. 6.4M</span>
-              <span className="text-amber-700">Swat Vault: {formatPKR(openingCashState)}</span>
+              <span className="text-cyan-800">
+                {bankAccount ? `${bankAccount.bankName}: ${formatPKR(calculatedBankBalance ?? (bankAccount.openingBalance || 0))}` : 'Bank Account: Active'}
+              </span>
+              <span className="text-amber-700">Vault: {formatPKR(openingCashState)}</span>
             </div>
           </div>
 

@@ -3,10 +3,12 @@ import {
   db,
   seedDatabaseIfEmpty,
   INITIAL_OPENING_CASH,
+  INITIAL_BANK_ACCOUNT,
+  DEFAULT_COMPANY_PROFILE,
   clearAllDatabaseData,
   loadSampleTestingData,
 } from './db';
-import { Customer, GRNDocket, Order, Product, RoznamchaEntry } from './types';
+import { BankAccount, CompanyProfile, Customer, GRNDocket, Order, Product, RoznamchaEntry } from './types';
 import { Header } from './components/Header';
 import { MobileFieldView } from './components/mobile/MobileFieldView';
 import { DesktopConsoleView } from './components/desktop/DesktopConsoleView';
@@ -50,18 +52,35 @@ export default function App() {
     const saved = localStorage.getItem('omnisales_opening_cash');
     return saved !== null ? Number(saved) : INITIAL_OPENING_CASH;
   });
+  const [bankAccount, setBankAccount] = useState<BankAccount>(() => {
+    try {
+      const saved = localStorage.getItem('omnisales_bank_account');
+      return saved ? JSON.parse(saved) : INITIAL_BANK_ACCOUNT;
+    } catch {
+      return INITIAL_BANK_ACCOUNT;
+    }
+  });
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
+    try {
+      const saved = localStorage.getItem('omnisales_company_profile');
+      return saved ? JSON.parse(saved) : DEFAULT_COMPANY_PROFILE;
+    } catch {
+      return DEFAULT_COMPANY_PROFILE;
+    }
+  });
   const [isDbReady, setIsDbReady] = useState(false);
 
   // Refresh all state from Dexie IndexedDB
   const refreshData = useCallback(async () => {
     try {
-      const [prods, custs, ords, roz, queue, grn] = await Promise.all([
+      const [prods, custs, ords, roz, queue, grn, banks] = await Promise.all([
         db.products.toArray(),
         db.customers.toArray(),
         db.orders.toArray(),
         db.roznamcha.toArray(),
         db.syncQueue.toArray(),
         db.grn.toArray(),
+        db.bank_accounts.toArray(),
       ]);
 
       setProducts(prods);
@@ -70,6 +89,10 @@ export default function App() {
       setRoznamcha(roz);
       setSyncQueueCount(queue.length);
       setGrnDockets(grn);
+
+      if (banks && banks.length > 0) {
+        setBankAccount(banks[0]);
+      }
     } catch (err) {
       console.error('Failed to load data from Dexie IndexedDB:', err);
     }
@@ -142,6 +165,37 @@ export default function App() {
     return openingCash + totalCashIn - totalCashOut;
   }, [roznamcha, openingCash]);
 
+  // Live Bank Balance calculation:
+  // Starting/Opening Bank Balance + Bank Cash Deposits/Raast recoveries - Bank/Cheque supplier disbursements
+  const bankBalance = useMemo(() => {
+    const opening = bankAccount.openingBalance || 0;
+
+    const bankInflows = roznamcha
+      .filter(
+        (r) =>
+          r.type === 'cash_in' &&
+          (r.category === 'Bank Cash Deposit' ||
+            r.paymentMethod === 'Bank AL Habib / Raast' ||
+            r.narration.toLowerCase().includes('bank') ||
+            r.narration.toLowerCase().includes('raast'))
+      )
+      .reduce((acc, r) => acc + r.amount, 0);
+
+    const bankOutflows = roznamcha
+      .filter(
+        (r) =>
+          r.type === 'cash_out' &&
+          (r.paymentMethod === 'Bank AL Habib / Raast' ||
+            r.paymentMethod === 'Cheque' ||
+            r.category === 'Bank Cash Deposit' ||
+            r.narration.toLowerCase().includes('bank') ||
+            r.narration.toLowerCase().includes('cheque'))
+      )
+      .reduce((acc, r) => acc + r.amount, 0);
+
+    return opening + bankInflows - bankOutflows;
+  }, [bankAccount.openingBalance, roznamcha]);
+
   // Toggle Online/Offline simulation
   const handleToggleOnline = () => {
     setIsOnline((prev) => !prev);
@@ -184,6 +238,23 @@ export default function App() {
   const handleUpdateOpeningCash = (amount: number) => {
     setOpeningCash(amount);
     localStorage.setItem('omnisales_opening_cash', String(amount));
+  };
+
+  // Update Bank Account Setup
+  const handleUpdateBankAccount = async (account: BankAccount) => {
+    setBankAccount(account);
+    localStorage.setItem('omnisales_bank_account', JSON.stringify(account));
+    try {
+      await db.bank_accounts.put(account);
+    } catch (err) {
+      console.warn('Failed saving bank account to Dexie:', err);
+    }
+  };
+
+  // Update Company Profile Setup
+  const handleUpdateCompanyProfile = (profile: CompanyProfile) => {
+    setCompanyProfile(profile);
+    localStorage.setItem('omnisales_company_profile', JSON.stringify(profile));
   };
 
   // 1-Click Clear All Data / Reset Database to 100% Clean Slate
@@ -541,7 +612,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-white">
-      {/* Universal Header with Supabase Telemetry */}
+      {/* Universal Header with Supabase Telemetry & Live Bank Badge */}
       <Header
         currentMode={currentMode}
         onModeChange={(mode) => setCurrentMode(mode)}
@@ -551,6 +622,7 @@ export default function App() {
         isSyncing={isSyncing}
         onSyncNow={handleSyncNow}
         cashInHand={cashInHand}
+        bankBalance={bankBalance}
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         supabaseConnected={supabaseConnected}
       />
@@ -595,6 +667,9 @@ export default function App() {
             cashInHand={cashInHand}
             openingCash={openingCash}
             isOnline={isOnline}
+            bankAccount={bankAccount}
+            companyProfile={companyProfile}
+            calculatedBankBalance={bankBalance}
             syncQueueCount={syncQueueCount}
             isSyncing={isSyncing}
             onSyncNow={handleSyncNow}
@@ -608,6 +683,8 @@ export default function App() {
             onReceiveStock={handleReceiveStock}
             onAddCustomGRN={handleAddCustomGRN}
             onUpdateOpeningCash={handleUpdateOpeningCash}
+            onUpdateBankAccount={handleUpdateBankAccount}
+            onUpdateCompanyProfile={handleUpdateCompanyProfile}
             onClearAllData={handleClearAllData}
             onLoadSampleData={handleLoadSampleData}
           />

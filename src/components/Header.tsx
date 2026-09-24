@@ -6,6 +6,7 @@ import {
   WifiOff,
   RefreshCw,
   Wallet,
+  Landmark,
   RotateCcw,
   CheckCircle2,
   Cloud,
@@ -21,6 +22,7 @@ interface HeaderProps {
   isSyncing: boolean;
   onSyncNow: () => void;
   cashInHand: number;
+  bankBalance?: number;
   onOpenSupabaseModal?: () => void;
   supabaseConnected?: boolean;
 }
@@ -34,6 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
   isSyncing,
   onSyncNow,
   cashInHand,
+  bankBalance = 0,
   onOpenSupabaseModal,
   supabaseConnected = true,
 }) => {
@@ -90,17 +93,29 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
 
-        {/* Right Status Group: Cash In Hand, Online Toggle, Sync Queue */}
+        {/* Right Status Group: Cash In Hand, Bank Balance, Online Toggle, Sync Queue */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-          {/* Cash In Hand Chip */}
+          {/* Vault Cash Chip */}
           <div
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs"
-            title="Current Roznamcha Live Cash in Hand"
+            title="Current Roznamcha Physical Cash in Vault / Drawer"
           >
             <Wallet className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-slate-400 text-[11px]">Vault Cash:</span>
             <span className="font-mono font-bold text-emerald-400">
               {formatPKR(cashInHand)}
+            </span>
+          </div>
+
+          {/* Bank Balance Badge */}
+          <div
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-cyan-900/60 text-xs shadow-xs"
+            title="Total Cleared Commercial Bank Balance (Bank AL Habib / Corporate Accounts)"
+          >
+            <Landmark className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-slate-400 text-[11px]">Bank Balance:</span>
+            <span className="font-mono font-bold text-cyan-300">
+              {formatPKR(bankBalance)}
             </span>
           </div>
 

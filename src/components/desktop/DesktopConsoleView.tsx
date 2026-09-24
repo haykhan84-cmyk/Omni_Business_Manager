@@ -9,8 +9,9 @@ import {
   BarChart3,
   Navigation,
   Settings,
+  Landmark,
 } from 'lucide-react';
-import { Customer, GRNDocket, Order, Product, RoznamchaEntry } from '../../types';
+import { BankAccount, CompanyProfile, Customer, GRNDocket, Order, Product, RoznamchaEntry } from '../../types';
 import { DesktopOverview } from './DesktopOverview';
 import { DesktopProductCatalog } from './DesktopProductCatalog';
 import { DesktopRoznamcha } from './DesktopRoznamcha';
@@ -31,6 +32,9 @@ interface DesktopConsoleViewProps {
   cashInHand: number;
   openingCash: number;
   isOnline: boolean;
+  bankAccount: BankAccount;
+  companyProfile: CompanyProfile;
+  calculatedBankBalance?: number;
   syncQueueCount?: number;
   isSyncing?: boolean;
   onSyncNow?: () => Promise<void>;
@@ -44,6 +48,8 @@ interface DesktopConsoleViewProps {
   onReceiveStock: (docket: GRNDocket, lineUpdates: { productId: string; addedCartons: number }[]) => Promise<void>;
   onAddCustomGRN: (docket: Omit<GRNDocket, 'id'>, lineUpdates: { productId: string; addedCartons: number }[]) => Promise<void>;
   onUpdateOpeningCash: (amount: number) => void;
+  onUpdateBankAccount: (account: BankAccount) => Promise<void> | void;
+  onUpdateCompanyProfile: (profile: CompanyProfile) => Promise<void> | void;
   onClearAllData: () => Promise<void>;
   onLoadSampleData?: () => Promise<void>;
 }
@@ -57,6 +63,9 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
   cashInHand,
   openingCash,
   isOnline,
+  bankAccount,
+  companyProfile,
+  calculatedBankBalance = 0,
   syncQueueCount = 0,
   isSyncing = false,
   onSyncNow,
@@ -70,6 +79,8 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
   onReceiveStock,
   onAddCustomGRN,
   onUpdateOpeningCash,
+  onUpdateBankAccount,
+  onUpdateCompanyProfile,
   onClearAllData,
   onLoadSampleData,
 }) => {
@@ -205,8 +216,13 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             customers={customers}
             orders={orders}
             openingCash={openingCash}
+            bankAccount={bankAccount}
+            companyProfile={companyProfile}
+            calculatedBankBalance={calculatedBankBalance}
             onAddEntry={onAddRoznamchaEntry}
             onUpdateOpeningCash={onUpdateOpeningCash}
+            onUpdateBankAccount={onUpdateBankAccount}
+            onUpdateCompanyProfile={onUpdateCompanyProfile}
           />
         )}
 
@@ -221,7 +237,12 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
         )}
 
         {activeTab === 'print' && (
-          <DesktopPrintStudio orders={orders} customers={customers} />
+          <DesktopPrintStudio
+            orders={orders}
+            customers={customers}
+            bankAccount={bankAccount}
+            companyProfile={companyProfile}
+          />
         )}
 
         {activeTab === 'settings' && (
@@ -235,7 +256,12 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             openingCash={openingCash}
             isOnline={isOnline}
             syncQueueCount={syncQueueCount}
+            bankAccount={bankAccount}
+            companyProfile={companyProfile}
+            calculatedBankBalance={calculatedBankBalance}
             onUpdateOpeningCash={onUpdateOpeningCash}
+            onUpdateBankAccount={onUpdateBankAccount}
+            onUpdateCompanyProfile={onUpdateCompanyProfile}
             onClearAllData={onClearAllData}
             onNavigateTab={(tab) => setActiveTab(tab as any)}
             onLoadSampleData={onLoadSampleData}

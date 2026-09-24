@@ -1,3 +1,30 @@
+export interface BankAccount {
+  id: string;
+  bankName: string; // e.g. "Bank AL Habib", "Meezan Bank", "Faysal Bank", "Habib Bank Ltd"
+  accountTitle: string; // e.g. "PrimeLink Enterprises"
+  accountNumber: string; // Account Number
+  iban: string; // 24-digit PK IBAN
+  branchName: string; // e.g. "Mingora City Branch, Swat"
+  raastId: string; // Raast ID or registered mobile
+  openingBalance: number; // Starting cleared bank balance (PKR)
+  currentBalance?: number; // Calculated or current balance
+  isPrimary?: boolean;
+}
+
+export interface CompanyProfile {
+  companyName: string;
+  tradingName: string;
+  proprietor: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  ntn: string;
+  strn: string;
+  drugLicenseNo?: string;
+  tagline?: string;
+}
+
 export interface Product {
   id: string;
   sku: string;

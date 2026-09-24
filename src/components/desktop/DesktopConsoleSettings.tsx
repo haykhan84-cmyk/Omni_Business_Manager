@@ -15,9 +15,12 @@ import {
   Server,
   Cloud,
   Check,
+  Landmark,
+  Building2,
 } from 'lucide-react';
-import { Customer, GRNDocket, Order, Product, RoznamchaEntry } from '../../types';
+import { BankAccount, CompanyProfile, Customer, GRNDocket, Order, Product, RoznamchaEntry } from '../../types';
 import { formatPKR } from '../../utils/calculations';
+import { BankAccountsManagement } from './BankAccountsManagement';
 
 interface DesktopConsoleSettingsProps {
   products: Product[];
@@ -29,10 +32,16 @@ interface DesktopConsoleSettingsProps {
   openingCash: number;
   isOnline: boolean;
   syncQueueCount?: number;
+  bankAccount: BankAccount;
+  companyProfile: CompanyProfile;
+  calculatedBankBalance?: number;
   onUpdateOpeningCash: (amount: number) => void;
+  onUpdateBankAccount: (account: BankAccount) => Promise<void> | void;
+  onUpdateCompanyProfile: (profile: CompanyProfile) => Promise<void> | void;
   onClearAllData: () => Promise<void>;
   onNavigateTab: (tab: string) => void;
   onLoadSampleData?: () => Promise<void>;
+  initialSettingsSubTab?: 'general' | 'banking';
 }
 
 export const DesktopConsoleSettings: React.FC<DesktopConsoleSettingsProps> = ({
@@ -45,11 +54,20 @@ export const DesktopConsoleSettings: React.FC<DesktopConsoleSettingsProps> = ({
   openingCash,
   isOnline,
   syncQueueCount = 0,
+  bankAccount,
+  companyProfile,
+  calculatedBankBalance = 0,
   onUpdateOpeningCash,
+  onUpdateBankAccount,
+  onUpdateCompanyProfile,
   onClearAllData,
   onNavigateTab,
   onLoadSampleData,
+  initialSettingsSubTab = 'general',
 }) => {
+  // Sub-tab selection within settings
+  const [activeSettingsSection, setActiveSettingsSection] = useState<'general' | 'banking'>(initialSettingsSubTab);
+
   // Opening Cash editing state
   const [openingCashInput, setOpeningCashInput] = useState<string>(openingCash.toString());
   const [cashSaveSuccess, setCashSaveSuccess] = useState<boolean>(false);
@@ -137,39 +155,83 @@ export const DesktopConsoleSettings: React.FC<DesktopConsoleSettingsProps> = ({
         </div>
       )}
 
-      {/* Header Banner */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-            <Database className="w-4 h-4 text-amber-600" />
-            <span>Console Governance</span>
-            <span>/</span>
-            <span className="text-slate-800">Database &amp; System Settings</span>
-          </div>
-          <h1 className="text-2xl font-black text-slate-900">Console Settings &amp; Data Control</h1>
-          <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-            Manage your local Dexie.js (IndexedDB) database, configure start-of-day Vault Cash, onboard real FMCG/Pharma items, or reset to a 100% clean slate.
-          </p>
-        </div>
+      {/* Sub-Navigation Switcher */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 text-xs font-bold w-fit">
+        <button
+          onClick={() => setActiveSettingsSection('general')}
+          className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+            activeSettingsSection === 'general'
+              ? 'bg-white shadow-xs text-slate-900 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Database className="w-4 h-4 text-amber-600" />
+          <span>General Database &amp; Vault Cash</span>
+        </button>
 
-        {/* Database Quick Health */}
-        <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-          <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
-            <Server className="w-5 h-5" />
-          </div>
-          <div className="text-xs">
-            <div className="font-bold text-slate-800 flex items-center gap-1.5">
-              <span>IndexedDB Status:</span>
-              <span className="text-emerald-700 font-extrabold flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Healthy
-              </span>
-            </div>
-            <div className="text-[11px] text-slate-500 font-mono">
-              Total Records: {products.length + customers.length + orders.length + roznamcha.length} items
-            </div>
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveSettingsSection('banking')}
+          className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+            activeSettingsSection === 'banking'
+              ? 'bg-white shadow-xs text-cyan-900 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Landmark className="w-4 h-4 text-cyan-600" />
+          <span>Bank Accounts &amp; Company Profile</span>
+          <span className="px-1.5 py-0.5 bg-cyan-100 text-cyan-800 text-[10px] rounded-full font-mono">
+            Raast
+          </span>
+        </button>
       </div>
+
+      {/* Render Banking Management Section */}
+      {activeSettingsSection === 'banking' && (
+        <BankAccountsManagement
+          bankAccount={bankAccount}
+          companyProfile={companyProfile}
+          onUpdateBankAccount={onUpdateBankAccount}
+          onUpdateCompanyProfile={onUpdateCompanyProfile}
+          calculatedBankBalance={calculatedBankBalance}
+        />
+      )}
+
+      {/* Render General Database & Vault Cash Section */}
+      {activeSettingsSection === 'general' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                <Database className="w-4 h-4 text-amber-600" />
+                <span>Console Governance</span>
+                <span>/</span>
+                <span className="text-slate-800">Database &amp; System Settings</span>
+              </div>
+              <h1 className="text-2xl font-black text-slate-900">Console Settings &amp; Data Control</h1>
+              <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+                Manage your local Dexie.js (IndexedDB) database, configure start-of-day Vault Cash, onboard real FMCG/Pharma items, or reset to a 100% clean slate.
+              </p>
+            </div>
+
+            {/* Database Quick Health */}
+            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
+                <Server className="w-5 h-5" />
+              </div>
+              <div className="text-xs">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>IndexedDB Status:</span>
+                  <span className="text-emerald-700 font-extrabold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" /> Healthy
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-mono">
+                  Total Records: {products.length + customers.length + orders.length + roznamcha.length} items
+                </div>
+              </div>
+            </div>
+          </div>
 
       {/* Grid of Settings Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -417,6 +479,8 @@ export const DesktopConsoleSettings: React.FC<DesktopConsoleSettingsProps> = ({
           )}
         </div>
       </div>
+    </div>
+  )}
 
       {/* CONFIRMATION MODAL FOR CLEAR DATABASE */}
       {showConfirmResetModal && (

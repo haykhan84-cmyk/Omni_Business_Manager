@@ -22,16 +22,26 @@ import {
   Check,
   ChevronDown,
   Sparkles,
+  Landmark,
+  Smartphone,
+  CreditCard,
 } from 'lucide-react';
-import { Customer, Order } from '../../types';
+import { BankAccount, CompanyProfile, Customer, Order } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
 
 interface DesktopPrintStudioProps {
   orders: Order[];
   customers: Customer[];
+  bankAccount?: BankAccount;
+  companyProfile?: CompanyProfile;
 }
 
-export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({ orders, customers }) => {
+export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
+  orders,
+  customers,
+  bankAccount,
+  companyProfile,
+}) => {
   // State for selected booked order
   const [selectedOrderId, setSelectedOrderId] = useState<string>(orders[0]?.id || '');
   const selectedOrder = useMemo(() => {
@@ -51,10 +61,26 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({ orders, 
   const [presetCode, setPresetCode] = useState<string>('INV-A4-01');
 
   // Entity & Depot Branding
-  const [entityName, setEntityName] = useState('Apex Stitch Omnisales (Pvt) Ltd');
-  const [taxIds, setTaxIds] = useState('NTN: 7291048-2 • STRN: 327787612345');
-  const [depotLocation, setDepotLocation] = useState('Mingora Central Depot & Gate 1, Swat, KPK');
+  const [entityName, setEntityName] = useState(companyProfile?.companyName || 'PrimeLink Distribution & Logistics');
+  const [taxIds, setTaxIds] = useState(
+    companyProfile?.ntn ? `NTN: ${companyProfile.ntn} • STRN: ${companyProfile.strn}` : 'NTN: 7291048-2 • STRN: 327787612345'
+  );
+  const [depotLocation, setDepotLocation] = useState(
+    companyProfile?.address ? `${companyProfile.address}, ${companyProfile.city}` : 'Mingora Central Depot & Gate 1, Swat, KPK'
+  );
   const [logoOrientation, setLogoOrientation] = useState<'left' | 'center' | 'right' | 'none'>('left');
+
+  // Active bank details for invoice settlement
+  const activeBank = bankAccount || {
+    bankName: 'Bank AL Habib',
+    accountTitle: 'PrimeLink Enterprises',
+    accountNumber: '1023-0981-002341-01',
+    iban: 'PK52BAHL1023098100234101',
+    branchName: 'Mingora City Branch, Swat',
+    raastId: '03009821450',
+    openingBalance: 0,
+    id: 'bank-al-habib-01',
+  };
 
   // Document Variables & Statutory Toggles
   const [customDocNum, setCustomDocNum] = useState('');
@@ -865,6 +891,47 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({ orders, 
                     </div>
                   </div>
 
+                  {/* 4b. Official Bank Settlement Advice & Raast ID for Retailer Online Transfer */}
+                  <div className="mt-4 p-3.5 bg-slate-50 border border-slate-300 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-cyan-900 text-white flex items-center justify-center shrink-0">
+                        <Landmark className="w-5 h-5 text-cyan-300" />
+                      </div>
+                      <div className="text-[11px] leading-tight">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold uppercase text-slate-900 text-[11px]">
+                            Bank Online Transfer &amp; Raast Settlement Advice
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-900 text-[9px] font-bold font-mono">
+                            INSTANT RAAST
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 mt-0.5">
+                          Retailers can clear net invoice dues directly into our commercial bank account:
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="w-full md:w-auto grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono bg-white p-2.5 rounded-lg border border-slate-200">
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase font-sans">Bank:</span>
+                        <strong className="text-slate-900">{activeBank.bankName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase font-sans">Title:</span>
+                        <strong className="text-slate-900 truncate block max-w-[130px]">{activeBank.accountTitle}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase font-sans">24-Digit IBAN:</span>
+                        <strong className="text-cyan-800 break-all">{activeBank.iban}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase font-sans">Raast ID / Mobile:</span>
+                        <strong className="text-emerald-700 font-bold">{activeBank.raastId}</strong>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* 5. Dual Stamp & Legal Signature Blocks */}
                   {showDualStamps && (
                     <div className="mt-8 pt-4 border-t border-slate-300 grid grid-cols-3 gap-6 text-center text-[10px]">
@@ -981,6 +1048,15 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({ orders, 
                         </div>
                       </>
                     )}
+                  </div>
+
+                  {/* Official Bank Details & Raast ID for Thermal Slip */}
+                  <div className="my-1.5 p-1.5 border border-black border-dashed text-[8px] font-mono leading-tight bg-gray-50 text-left space-y-0.5">
+                    <div className="font-bold uppercase text-[8px] text-black">ONLINE BANK / RAAST SETTLEMENT:</div>
+                    <div>Bank: {activeBank.bankName}</div>
+                    <div className="truncate">Title: {activeBank.accountTitle}</div>
+                    <div className="break-all font-bold">IBAN: {activeBank.iban}</div>
+                    <div className="font-bold text-black">Raast ID: {activeBank.raastId}</div>
                   </div>
 
                   {showQrCode && (
