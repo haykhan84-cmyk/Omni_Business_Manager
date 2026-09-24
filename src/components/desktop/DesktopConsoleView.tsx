@@ -10,8 +10,13 @@ import {
   Navigation,
   Settings,
   Landmark,
+  Menu,
+  X,
+  ChevronRight,
+  ShieldCheck,
+  Building,
 } from 'lucide-react';
-import { BankAccount, CompanyProfile, Customer, GRNDocket, Order, Product, RoznamchaEntry } from '../../types';
+import { BankAccount, CompanyProfile, Customer, GRNDocket, Order, Product, RoznamchaEntry, UserAccount } from '../../types';
 import { DesktopOverview } from './DesktopOverview';
 import { DesktopProductCatalog } from './DesktopProductCatalog';
 import { DesktopRoznamcha } from './DesktopRoznamcha';
@@ -34,6 +39,7 @@ interface DesktopConsoleViewProps {
   isOnline: boolean;
   bankAccount: BankAccount;
   companyProfile: CompanyProfile;
+  currentUser?: UserAccount;
   calculatedBankBalance?: number;
   syncQueueCount?: number;
   isSyncing?: boolean;
@@ -68,6 +74,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
   isOnline,
   bankAccount,
   companyProfile,
+  currentUser,
   calculatedBankBalance = 0,
   syncQueueCount = 0,
   isSyncing = false,
@@ -103,23 +110,144 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
     | 'settings'
   >('overview');
 
-  const navItems = [
-    { id: 'overview' as const, label: 'DASHBOARD', icon: LayoutDashboard },
-    { id: 'sales_routes' as const, label: 'SALES & ROUTES', icon: Navigation },
-    { id: 'reports' as const, label: 'REPORTS & ANALYTICS', icon: BarChart3 },
-    { id: 'staff_attendance' as const, label: 'HR & PAYROLL', icon: Users },
-    { id: 'inventory_grn' as const, label: 'INVENTORY & GRN', icon: Truck },
-    { id: 'catalog' as const, label: 'MASTER CATALOG', icon: Package },
-    { id: 'roznamcha' as const, label: 'FINANCIAL ROZNAMCHA', icon: Wallet },
-    { id: 'customers' as const, label: 'CRM & CLIENT 360', icon: Users },
-    { id: 'print' as const, label: 'PRINT STUDIO', icon: Printer },
-    { id: 'settings' as const, label: 'SETTINGS & DATA', icon: Settings },
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+
+  const rawNavItems = [
+    { id: 'overview' as const, label: 'Executive Dashboard', shortLabel: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'ACCOUNTANT', 'WAREHOUSE_SUPERVISOR'] },
+    { id: 'catalog' as const, label: 'Master Product Catalog', shortLabel: 'Catalog', icon: Package, roles: ['ADMIN', 'WAREHOUSE_SUPERVISOR'] },
+    { id: 'inventory_grn' as const, label: 'Inventory & GRN', shortLabel: 'Inventory', icon: Truck, roles: ['ADMIN', 'WAREHOUSE_SUPERVISOR'] },
+    { id: 'roznamcha' as const, label: 'Financial Roznamcha & Banks', shortLabel: 'Roznamcha', icon: Wallet, roles: ['ADMIN', 'ACCOUNTANT'] },
+    { id: 'customers' as const, label: 'Customer 360 & Credit', shortLabel: 'Clients 360', icon: Users, roles: ['ADMIN', 'ACCOUNTANT'] },
+    { id: 'staff_attendance' as const, label: 'HR & Staff Payroll', shortLabel: 'HR & Payroll', icon: Users, roles: ['ADMIN'] },
+    { id: 'print' as const, label: 'Print Studio (A4 / Thermal)', shortLabel: 'Print Studio', icon: Printer, roles: ['ADMIN', 'ACCOUNTANT'] },
+    { id: 'sales_routes' as const, label: 'Sales Routes & Beat', shortLabel: 'Routes', icon: Navigation, roles: ['ADMIN'] },
+    { id: 'reports' as const, label: 'Reports & Analytics', shortLabel: 'Reports', icon: BarChart3, roles: ['ADMIN', 'ACCOUNTANT'] },
+    { id: 'settings' as const, label: 'System Settings & Data', shortLabel: 'Settings', icon: Settings, roles: ['ADMIN'] },
   ];
 
+  // Filter based on user role permissions (if admin or no user defined, show all)
+  const navItems = rawNavItems.filter((item) => {
+    if (!currentUser || currentUser.role === 'ADMIN') return true;
+    return item.roles.includes(currentUser.role);
+  });
+
+  const activeNavItem = navItems.find((item) => item.id === activeTab) || navItems[0];
+
+  const handleSelectTab = (tabId: any) => {
+    setActiveTab(tabId);
+    setIsMobileDrawerOpen(false);
+  };
+
   return (
-    <div className="w-full max-w-7xl mx-auto flex flex-col space-y-6 py-6 px-4 sm:px-6">
-      {/* Utility Bar Navigation (Matching Desktop ERP prototype) */}
-      <div className="bg-white rounded-2xl p-2 border border-slate-200 shadow-sm print:hidden flex items-center justify-between overflow-x-auto no-scrollbar">
+    <div className="w-full max-w-7xl mx-auto flex flex-col space-y-4 sm:space-y-6 py-3 sm:py-6 px-3 sm:px-6">
+      {/* Mobile Drawer Navigation Header (< 768px / md:hidden) */}
+      <div className="md:hidden bg-white rounded-2xl p-3 border border-slate-200 shadow-sm print:hidden flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsMobileDrawerOpen(true)}
+            className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center hover:bg-slate-800 active:scale-95 transition-all shadow-sm cursor-pointer"
+            aria-label="Open Navigation Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Section</div>
+            <div className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+              <span>{activeNavItem.label}</span>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsMobileDrawerOpen(true)}
+          className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-800 text-xs font-bold flex items-center gap-1 cursor-pointer"
+        >
+          <span>Sections</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Slide-over Mobile Drawer Backdrop & Panel */}
+      {isMobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsMobileDrawerOpen(false)}
+          />
+
+          {/* Drawer content */}
+          <div className="relative w-4/5 max-w-xs bg-slate-900 text-white h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200">
+            {/* Drawer Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center font-black text-white text-xs shadow-sm">
+                  OS
+                </div>
+                <div>
+                  <div className="font-extrabold text-sm tracking-tight text-white">Console Menu</div>
+                  <div className="text-[10px] text-amber-400">PrimeLink Distribution</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileDrawerOpen(false)}
+                className="w-8 h-8 rounded-lg bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Vertical Sections List */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 py-1.5">
+                Console Modules
+              </div>
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSelectTab(item.id)}
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold transition-all cursor-pointer text-left ${
+                      isActive
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {isActive && <ChevronRight className="w-4 h-4 text-white" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* User Role Card at bottom */}
+            {currentUser && (
+              <div className="p-3 border-t border-slate-800 bg-slate-950/60">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-xs text-amber-400 font-bold shrink-0">
+                    {currentUser.role[0]}
+                  </div>
+                  <div className="truncate">
+                    <div className="text-xs font-bold text-white truncate">{currentUser.name}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      Role: {currentUser.role}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Horizontal Utility Bar Navigation (Visible >= 768px / md:flex) */}
+      <div className="hidden md:flex bg-white rounded-2xl p-2 border border-slate-200 shadow-sm print:hidden items-center justify-between overflow-x-auto no-scrollbar">
         <nav className="flex items-center gap-1.5 min-w-max">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -143,7 +271,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
       </div>
 
       {/* Main Tab Panels */}
-      <div>
+      <div className="w-full">
         {activeTab === 'overview' && (
           <DesktopOverview
             products={products}
@@ -173,9 +301,6 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             customers={customers}
             orders={orders}
             roznamcha={roznamcha}
-            onRefreshData={onSyncNow}
-            onNavigateTab={(tab) => setActiveTab(tab as any)}
-            onDeleteOrder={onDeleteOrder}
           />
         )}
 

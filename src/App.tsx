@@ -8,11 +8,13 @@ import {
   clearAllDatabaseData,
   loadSampleTestingData,
 } from './db';
-import { BankAccount, CompanyProfile, Customer, GRNDocket, Order, Product, RoznamchaEntry } from './types';
+import { BankAccount, CompanyProfile, Customer, GRNDocket, Order, Product, RoznamchaEntry, UserAccount } from './types';
 import { Header } from './components/Header';
 import { MobileFieldView } from './components/mobile/MobileFieldView';
 import { DesktopConsoleView } from './components/desktop/DesktopConsoleView';
 import { SupabaseSyncModal } from './components/shared/SupabaseSyncModal';
+import { LoginScreen } from './components/auth/LoginScreen';
+import { getStoredSession, clearStoredSession } from './services/authService';
 import {
   checkSupabaseConnection,
   fetchSupabaseLiveCounts,
@@ -35,10 +37,32 @@ import {
 } from './db/supabase';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    const session = getStoredSession();
+    return session ? session.user : null;
+  });
   const [currentMode, setCurrentMode] = useState<'mobile' | 'desktop'>('mobile');
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncQueueCount, setSyncQueueCount] = useState<number>(0);
+
+  const handleLoginSuccess = (user: UserAccount) => {
+    setCurrentUser(user);
+    if (user.role === 'ORDER_BOOKER' || user.role === 'DELIVERY_DRIVER') {
+      setCurrentMode('mobile');
+    } else if (user.role === 'ACCOUNTANT' || user.role === 'WAREHOUSE_SUPERVISOR') {
+      if (window.innerWidth >= 1024) {
+        setCurrentMode('desktop');
+      } else {
+        setCurrentMode('mobile');
+      }
+    }
+  };
+
+  const handleSignOut = () => {
+    clearStoredSession();
+    setCurrentUser(null);
+  };
 
   // Supabase Telemetry State
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState<boolean>(false);
@@ -893,6 +917,11 @@ export default function App() {
     );
   }
 
+  // 1. Unauthenticated State: Show Clean Branded Employee Sign In Screen
+  if (!currentUser) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} isOnline={isOnline} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-white">
       {/* Universal Header with Supabase Telemetry & Live Bank Badge */}
@@ -908,6 +937,8 @@ export default function App() {
         bankBalance={bankBalance}
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         supabaseConnected={supabaseConnected}
+        currentUser={currentUser}
+        onSignOut={handleSignOut}
       />
 
       {/* Supabase Cloud Live Sync Modal */}
@@ -936,11 +967,15 @@ export default function App() {
             cashInHand={cashInHand}
             openingCash={openingCash}
             isOnline={isOnline}
+            currentUser={currentUser}
             onSaveOrder={handleSaveOrder}
             onAddRoznamchaEntry={handleAddRoznamchaEntry}
             onAddCustomer={handleAddCustomer}
             onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
             onDeleteOrder={handleDeleteOrder}
+            onSyncNow={handleSyncNow}
+            isSyncing={isSyncing}
+            syncQueueCount={syncQueueCount}
           />
         ) : (
           <DesktopConsoleView
@@ -954,6 +989,7 @@ export default function App() {
             isOnline={isOnline}
             bankAccount={bankAccount}
             companyProfile={companyProfile}
+            currentUser={currentUser}
             calculatedBankBalance={bankBalance}
             syncQueueCount={syncQueueCount}
             isSyncing={isSyncing}

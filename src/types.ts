@@ -450,3 +450,30 @@ export interface ReportItem {
   isGpsLocked?: boolean;
   hasNearExpiryAlert?: boolean;
 }
+
+export type UserRole =
+  | 'ADMIN'
+  | 'ORDER_BOOKER'
+  | 'DELIVERY_DRIVER'
+  | 'WAREHOUSE_SUPERVISOR'
+  | 'ACCOUNTANT';
+
+export interface UserAccount {
+  id: string;
+  employeeId: string;
+  name: string;
+  phone: string;
+  pin: string;
+  role: UserRole;
+  roleTitle: string;
+  assignedRoute?: string;
+  vanAssigned?: string;
+  avatarUrl?: string;
+  tenant_id: string;
+}
+
+export interface UserSession {
+  user: UserAccount;
+  loginTime: string;
+  rememberMe: boolean;
+}
