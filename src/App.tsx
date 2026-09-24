@@ -757,7 +757,37 @@ export default function App() {
       }
     }
 
+    // 3. AUTO-LINK GRN TO SUPPLIER PAYABLES LEDGER
+    const totalGrnInvoiceValue =
+      docket.totalAmount > 0
+        ? docket.totalAmount
+        : docket.items.reduce(
+            (sum, item) =>
+              sum +
+              (item.lineTotal ||
+                item.acceptedCartons * (item.invRate || item.poRate || 0)),
+            0
+          );
+
+    const grnRozEntry: RoznamchaEntry = {
+      id: `grn-bill-${docket.grnNo.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      entryNo: `BILL-${docket.grnNo}`,
+      date: docket.receivedAt || docket.date || new Date().toISOString(),
+      type: 'credit',
+      category: 'Supplier Bill / Inward Stock',
+      amount: totalGrnInvoiceValue,
+      supplierName: docket.vendorName || 'Volker Life',
+      slipNo: docket.grnNo,
+      accountCode: '2001-AP',
+      narration: `Stock received via GRN #${docket.grnNo}`,
+      recordedBy: docket.receivingInspector || 'Warehouse Intake',
+      synced: false,
+    };
+
+    await db.roznamcha.put(grnRozEntry);
+
     if (isOnline) {
+      syncRoznamchaEntryToSupabase(grnRozEntry);
       fetchSupabaseLiveCounts().then(setSupabaseCounts);
       setLastSyncedAt(new Date().toISOString());
     } else {
@@ -803,7 +833,37 @@ export default function App() {
       }
     }
 
+    // AUTO-LINK GRN TO SUPPLIER PAYABLES LEDGER
+    const totalGrnInvoiceValue =
+      newDocket.totalAmount > 0
+        ? newDocket.totalAmount
+        : newDocket.items.reduce(
+            (sum, item) =>
+              sum +
+              (item.lineTotal ||
+                item.acceptedCartons * (item.invRate || item.poRate || 0)),
+            0
+          );
+
+    const grnRozEntry: RoznamchaEntry = {
+      id: `grn-bill-${newDocket.grnNo.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+      entryNo: `BILL-${newDocket.grnNo}`,
+      date: newDocket.receivedAt || newDocket.date || new Date().toISOString(),
+      type: 'credit',
+      category: 'Supplier Bill / Inward Stock',
+      amount: totalGrnInvoiceValue,
+      supplierName: newDocket.vendorName || 'Volker Life',
+      slipNo: newDocket.grnNo,
+      accountCode: '2001-AP',
+      narration: `Stock received via GRN #${newDocket.grnNo}`,
+      recordedBy: newDocket.receivingInspector || 'Warehouse Intake',
+      synced: false,
+    };
+
+    await db.roznamcha.put(grnRozEntry);
+
     if (isOnline) {
+      syncRoznamchaEntryToSupabase(grnRozEntry);
       fetchSupabaseLiveCounts().then(setSupabaseCounts);
       setLastSyncedAt(new Date().toISOString());
     } else {

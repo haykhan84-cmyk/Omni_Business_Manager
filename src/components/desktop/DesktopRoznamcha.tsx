@@ -30,14 +30,16 @@ import {
   AlertTriangle,
   Lock,
   Trash2,
+  Truck,
 } from 'lucide-react';
-import { Customer, Order, RoznamchaCategory, RoznamchaEntry, BankAccount, CompanyProfile } from '../../types';
+import { Customer, Order, RoznamchaCategory, RoznamchaEntry, BankAccount, CompanyProfile, GRNDocket } from '../../types';
 import { formatPKR, formatDateTime, formatDate } from '../../utils/calculations';
 
 interface DesktopRoznamchaProps {
   entries: RoznamchaEntry[];
   customers: Customer[];
   orders?: Order[];
+  grnDockets?: GRNDocket[];
   openingCash: number;
   bankAccount?: BankAccount;
   companyProfile?: CompanyProfile;
@@ -53,6 +55,7 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
   entries,
   customers,
   orders = [],
+  grnDockets = [],
   openingCash,
   bankAccount,
   companyProfile,
@@ -82,7 +85,7 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
   const [activeLedgerView, setActiveLedgerView] = useState<'day_book' | 'account_ledger' | 'trial_balance'>('day_book');
   const [subsidiaryFilter, setSubsidiaryFilter] = useState<'cash_book' | 'customer_receivables' | 'supplier_payables' | 'expense_accounts'>('cash_book');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(customers[0]?.id || '');
-  const [selectedSupplierName, setSelectedSupplierName] = useState<string>('Engro Foods Ltd');
+  const [selectedSupplierName, setSelectedSupplierName] = useState<string>('all');
   const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>('all');
   const [selectedOperationalHead, setSelectedOperationalHead] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -93,6 +96,15 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
   const [selectedVoucherForReceipt, setSelectedVoucherForReceipt] = useState<RoznamchaEntry | null>(null);
   const [selectedVoucherForDetail, setSelectedVoucherForDetail] = useState<RoznamchaEntry | null>(null);
   const [entryToDelete, setEntryToDelete] = useState<RoznamchaEntry | null>(null);
+
+  // Pay Supplier / Settle Debt Modal State
+  const [showPaySupplierModal, setShowPaySupplierModal] = useState<boolean>(false);
+  const [paySupplierName, setPaySupplierName] = useState<string>('');
+  const [payAmount, setPayAmount] = useState<string>('');
+  const [payMethod, setPayMethod] = useState<'Cash' | 'Bank AL Habib / Raast' | 'EasyPaisa' | 'Cheque'>('Bank AL Habib / Raast');
+  const [paySlipNo, setPaySlipNo] = useState<string>(`PAY-VCH-${Math.floor(1000 + Math.random() * 9000)}`);
+  const [payDate, setPayDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [payNarration, setPayNarration] = useState<string>('');
 
   // Form State for Quick Post / Voucher Entry
   const [entryType, setEntryType] = useState<'cash_in' | 'cash_out'>('cash_out');
@@ -295,19 +307,232 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
     return customerTransactions.reduce((sum, t) => sum + t.credit, 0);
   }, [customerTransactions]);
 
-  // 4. Operational Heads Outflow Matrix
+  // 3B. Supplier Payables Subsidiary Ledger Data (Unified GRN Inward Stock & Debt Settlements)
+  const supplierTransactions = useMemo(() => {
+    type SupTx = {
+      id: string;
+      date: string;
+      refNo: string;
+      supplierName: string;
+      description: string;
+      type: 'CREDIT' | 'DEBIT'; // CREDIT = Inward Bill / Stock Received; DEBIT = Payment / Debt Settled
+      debit: number;
+      credit: number;
+      runningBalance: number;
+      paymentMethod?: string;
+      originalEntry?: RoznamchaEntry;
+      grnDocket?: GRNDocket;
+    };
+
+    const list: SupTx[] = [];
+    const grnRefNumbersSeen = new Set<string>();
+
+    // 1. Inward Stock from GRN Dockets (Credits to Supplier)
+    (grnDockets || []).forEach((docket) => {
+      const totalVal =
+        docket.totalAmount > 0
+          ? docket.totalAmount
+          : docket.items?.reduce(
+              (sum, item) =>
+                sum +
+                (item.lineTotal ||
+                  item.acceptedCartons * (item.invRate || item.poRate || 0)),
+              0
+            ) || 0;
+
+      const sName = (docket.vendorName || 'Volker Life').trim();
+      const grnNo = docket.grnNo || `GRN-${docket.id}`;
+      grnRefNumbersSeen.add(grnNo.toLowerCase());
+
+      list.push({
+        id: `grn-docket-${docket.id || grnNo}`,
+        date: docket.receivedAt || docket.date || new Date().toISOString(),
+        refNo: grnNo,
+        supplierName: sName,
+        description: docket.notes || `Stock received via GRN #${grnNo}`,
+        type: 'CREDIT',
+        debit: 0,
+        credit: totalVal,
+        runningBalance: 0,
+        grnDocket: docket,
+      });
+    });
+
+    // 2. Inward Stock from Roznamcha entries where category is 'Supplier Bill / Inward Stock' or credit
+    entries.forEach((e) => {
+      const isGrnBill =
+        e.category === 'Supplier Bill / Inward Stock' ||
+        (e.type === 'credit' && (e.supplierName || e.narration.toLowerCase().includes('grn')));
+
+      if (isGrnBill) {
+        const ref = (e.slipNo || e.entryNo || '').trim();
+        if (ref && grnRefNumbersSeen.has(ref.toLowerCase())) {
+          // Already added from grnDockets
+          return;
+        }
+
+        list.push({
+          id: `roz-bill-${e.id}`,
+          date: e.date,
+          refNo: ref || `BILL-${e.id.slice(0, 4)}`,
+          supplierName: (e.supplierName || 'Volker Life').trim(),
+          description: e.narration || `Stock received via GRN #${ref}`,
+          type: 'CREDIT',
+          debit: 0,
+          credit: e.amount || 0,
+          runningBalance: 0,
+          originalEntry: e,
+        });
+      }
+    });
+
+    // 3. Supplier Payments from Roznamcha (Debits to Supplier, Cash/Bank Out)
+    entries.forEach((e) => {
+      if (e.category === 'Supplier Payment' || (e.type === 'cash_out' && e.supplierName)) {
+        list.push({
+          id: `roz-pay-${e.id}`,
+          date: e.date,
+          refNo: e.slipNo || e.entryNo || `PAY-${e.id.slice(0, 4)}`,
+          supplierName: (e.supplierName || 'Volker Life').trim(),
+          description: e.narration || `Supplier Payment via ${e.paymentMethod || 'Cash'}`,
+          type: 'DEBIT',
+          debit: e.amount || 0,
+          credit: 0,
+          runningBalance: 0,
+          paymentMethod: e.paymentMethod || 'Cash',
+          originalEntry: e,
+        });
+      }
+    });
+
+    // Sort chronologically ascending
+    list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Compute running balance (Liability: Credit increases payable, Debit decreases payable)
+    let bal = 0;
+    const computed = list.map((tx) => {
+      bal += tx.credit - tx.debit;
+      return { ...tx, runningBalance: bal };
+    });
+
+    return computed.reverse();
+  }, [grnDockets, entries]);
+
+  // Unique Supplier Names
+  const uniqueSupplierNames = useMemo(() => {
+    const set = new Set<string>();
+    supplierTransactions.forEach((t) => {
+      if (t.supplierName) set.add(t.supplierName.trim());
+    });
+    if (!set.has('Volker Life')) set.add('Volker Life');
+    return Array.from(set).sort();
+  }, [supplierTransactions]);
+
+  // Filtered Supplier Transactions (Search across all records & date filter)
+  const filteredSupplierTransactions = useMemo(() => {
+    return supplierTransactions.filter((tx) => {
+      // 1. Supplier Name Filter
+      if (selectedSupplierName !== 'all') {
+        if (tx.supplierName.toLowerCase() !== selectedSupplierName.toLowerCase()) {
+          return false;
+        }
+      }
+
+      // 2. Date Filter
+      // If user has entered a search query or dateFilter is 'all', show across all dates
+      if (dateFilter !== 'all' && !searchQuery.trim()) {
+        if (dateFilter === 'today' && !tx.date.startsWith(todayStr)) return false;
+        if (dateFilter === 'yesterday' && !tx.date.startsWith(yesterday)) return false;
+        if (dateFilter === 'week' && tx.date.slice(0, 10) < sevenDaysAgo) return false;
+      }
+
+      // 3. Search Query Filter (Matches supplier name, ref folio/GRN, narration, method)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const match =
+          tx.supplierName.toLowerCase().includes(q) ||
+          tx.refNo.toLowerCase().includes(q) ||
+          tx.description.toLowerCase().includes(q) ||
+          (tx.paymentMethod && tx.paymentMethod.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [supplierTransactions, selectedSupplierName, dateFilter, searchQuery, todayStr, yesterday, sevenDaysAgo]);
+
+  const supplierTotalBills = useMemo(() => {
+    return filteredSupplierTransactions.reduce((sum, t) => sum + t.credit, 0);
+  }, [filteredSupplierTransactions]);
+
+  const supplierTotalPaid = useMemo(() => {
+    return filteredSupplierTransactions.reduce((sum, t) => sum + t.debit, 0);
+  }, [filteredSupplierTransactions]);
+
+  const supplierNetPayable = useMemo(() => {
+    return supplierTotalBills - supplierTotalPaid;
+  }, [supplierTotalBills, supplierTotalPaid]);
+
+  // 4. Operational Heads Outflow Matrix (Live calculation from database transactions - No hardcoded fallback)
   const operationalHeads = useMemo(() => {
-    const list = [
-      { id: 'all', label: 'All Heads', amount: totalCashOut, percent: 100 },
-      { id: 'supplier_ap', label: 'Supplier AP', amount: Math.round(totalCashOut * 0.703) || 18420000, percent: 70.3 },
-      { id: 'payroll', label: 'Payroll & Staff', amount: Math.round(totalCashOut * 0.147) || 3850000, percent: 14.7 },
-      { id: 'fleet', label: 'Logistics & Fleet', amount: Math.round(totalCashOut * 0.074) || 1940000, percent: 7.4 },
-      { id: 'facility', label: 'Facility & Rent', amount: Math.round(totalCashOut * 0.042) || 1100000, percent: 4.2 },
-      { id: 'banking', label: 'Banking & Tx', amount: Math.round(totalCashOut * 0.02) || 210000, percent: 2.0 },
-      { id: 'kitchen', label: 'Kitchen / Pantry', amount: Math.round(totalCashOut * 0.014) || 110000, percent: 1.4 },
+    const cashOutEntries = entries.filter((e) => e.type === 'cash_out');
+
+    let supplierAP = 0;
+    let payroll = 0;
+    let fleet = 0;
+    let facility = 0;
+    let banking = 0;
+    let kitchen = 0;
+
+    cashOutEntries.forEach((e) => {
+      const amt = Number(e.amount) || 0;
+      const cat = e.category;
+      const narr = (e.narration || '').toLowerCase();
+
+      if (cat === 'Supplier Payment') {
+        supplierAP += amt;
+      } else if (cat === 'Driver Meal & Wages' || cat === 'Loading / Labor') {
+        payroll += amt;
+      } else if (cat === 'Fleet & Fuel') {
+        fleet += amt;
+      } else if (cat === 'Van Repair & Toll') {
+        facility += amt;
+      } else if (cat === 'Office & Pantry') {
+        if (narr.includes('kitchen') || narr.includes('tea') || narr.includes('pantry') || narr.includes('lunch')) {
+          kitchen += amt;
+        } else {
+          facility += amt;
+        }
+      } else if (cat === 'Bank Cash Deposit') {
+        banking += amt;
+      } else {
+        if (narr.includes('supplier') || narr.includes('vendor')) {
+          supplierAP += amt;
+        } else if (narr.includes('salary') || narr.includes('wage') || narr.includes('labor')) {
+          payroll += amt;
+        } else if (narr.includes('fuel') || narr.includes('fleet')) {
+          fleet += amt;
+        } else if (narr.includes('rent') || narr.includes('repair')) {
+          facility += amt;
+        } else {
+          facility += amt;
+        }
+      }
+    });
+
+    const calcPercent = (amt: number) =>
+      totalCashOut > 0 ? Number(((amt / totalCashOut) * 100).toFixed(1)) : 0;
+
+    return [
+      { id: 'all', label: 'All Heads', amount: totalCashOut, percent: totalCashOut > 0 ? 100 : 0 },
+      { id: 'supplier_ap', label: 'Supplier AP', amount: supplierAP, percent: calcPercent(supplierAP) },
+      { id: 'payroll', label: 'Payroll & Staff', amount: payroll, percent: calcPercent(payroll) },
+      { id: 'fleet', label: 'Logistics & Fleet', amount: fleet, percent: calcPercent(fleet) },
+      { id: 'facility', label: 'Facility & Rent', amount: facility, percent: calcPercent(facility) },
+      { id: 'banking', label: 'Banking & Tx', amount: banking, percent: calcPercent(banking) },
+      { id: 'kitchen', label: 'Kitchen / Pantry', amount: kitchen, percent: calcPercent(kitchen) },
     ];
-    return list;
-  }, [totalCashOut]);
+  }, [entries, totalCashOut]);
 
   // 5. Handlers
   const handlePrint = () => {
@@ -641,13 +866,56 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
           ))}
         </div>
 
-        {/* Ratio Visual Bar Chart */}
+        {/* Ratio Visual Bar Chart - Live Dynamic Widths */}
         <div className="w-full mt-2 flex h-2 rounded-full overflow-hidden bg-slate-100">
-          <div className="h-full bg-slate-800" style={{ width: '70.3%' }} title="Supplier AP: 70.3%"></div>
-          <div className="h-full bg-emerald-600" style={{ width: '14.7%' }} title="Payroll: 14.7%"></div>
-          <div className="h-full bg-amber-600" style={{ width: '7.4%' }} title="Logistics: 7.4%"></div>
-          <div className="h-full bg-blue-600" style={{ width: '4.2%' }} title="Facility: 4.2%"></div>
-          <div className="h-full bg-slate-400" style={{ width: '3.4%' }} title="Others: 3.4%"></div>
+          {totalCashOut === 0 ? (
+            <div className="w-full h-full bg-slate-200" title="No outflow expenses recorded yet"></div>
+          ) : (
+            <>
+              {(operationalHeads.find((h) => h.id === 'supplier_ap')?.percent || 0) > 0 && (
+                <div
+                  className="h-full bg-slate-800 transition-all"
+                  style={{ width: `${operationalHeads.find((h) => h.id === 'supplier_ap')!.percent}%` }}
+                  title={`Supplier AP: ${operationalHeads.find((h) => h.id === 'supplier_ap')!.percent}%`}
+                />
+              )}
+              {(operationalHeads.find((h) => h.id === 'payroll')?.percent || 0) > 0 && (
+                <div
+                  className="h-full bg-emerald-600 transition-all"
+                  style={{ width: `${operationalHeads.find((h) => h.id === 'payroll')!.percent}%` }}
+                  title={`Payroll: ${operationalHeads.find((h) => h.id === 'payroll')!.percent}%`}
+                />
+              )}
+              {(operationalHeads.find((h) => h.id === 'fleet')?.percent || 0) > 0 && (
+                <div
+                  className="h-full bg-amber-600 transition-all"
+                  style={{ width: `${operationalHeads.find((h) => h.id === 'fleet')!.percent}%` }}
+                  title={`Logistics: ${operationalHeads.find((h) => h.id === 'fleet')!.percent}%`}
+                />
+              )}
+              {(operationalHeads.find((h) => h.id === 'facility')?.percent || 0) > 0 && (
+                <div
+                  className="h-full bg-blue-600 transition-all"
+                  style={{ width: `${operationalHeads.find((h) => h.id === 'facility')!.percent}%` }}
+                  title={`Facility: ${operationalHeads.find((h) => h.id === 'facility')!.percent}%`}
+                />
+              )}
+              {(operationalHeads.find((h) => h.id === 'banking')?.percent || 0) > 0 && (
+                <div
+                  className="h-full bg-purple-600 transition-all"
+                  style={{ width: `${operationalHeads.find((h) => h.id === 'banking')!.percent}%` }}
+                  title={`Banking: ${operationalHeads.find((h) => h.id === 'banking')!.percent}%`}
+                />
+              )}
+              {(operationalHeads.find((h) => h.id === 'kitchen')?.percent || 0) > 0 && (
+                <div
+                  className="h-full bg-rose-500 transition-all"
+                  style={{ width: `${operationalHeads.find((h) => h.id === 'kitchen')!.percent}%` }}
+                  title={`Kitchen: ${operationalHeads.find((h) => h.id === 'kitchen')!.percent}%`}
+                />
+              )}
+            </>
+          )}
         </div>
       </section>
 
@@ -674,7 +942,10 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
               Customer Ledgers (Khatay)
             </button>
             <button
-              onClick={() => setSubsidiaryFilter('supplier_payables')}
+              onClick={() => {
+                setSubsidiaryFilter('supplier_payables');
+                setDateFilter('all');
+              }}
               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 subsidiaryFilter === 'supplier_payables' ? 'bg-white shadow-xs text-slate-900 font-extrabold' : 'text-slate-600'
               }`}
@@ -771,6 +1042,84 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
         </section>
       )}
 
+      {/* 5B. Conditional Subsidiary View Header: If Supplier Payables is selected */}
+      {subsidiaryFilter === 'supplier_payables' && (
+        <section className="bg-slate-900 text-white rounded-2xl p-5 shadow-sm space-y-4 border border-slate-800">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-xs">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400">
+                  Supplier Payables &amp; Inward Stock Ledger
+                </span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <select
+                    value={selectedSupplierName}
+                    onChange={(e) => setSelectedSupplierName(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 font-bold text-sm text-white rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="all">All Suppliers (Consolidated Payables)</option>
+                    {uniqueSupplierNames.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Supplier Metrics & Quick Action Button */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="p-2.5 bg-slate-800 rounded-xl border border-slate-700 text-center">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Inward GRN Bills</span>
+                  <span className="font-mono font-bold text-rose-400 text-xs mt-0.5 block">
+                    {formatPKR(supplierTotalBills)}
+                  </span>
+                </div>
+                <div className="p-2.5 bg-slate-800 rounded-xl border border-slate-700 text-center">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Paid Out</span>
+                  <span className="font-mono font-bold text-emerald-400 text-xs mt-0.5 block">
+                    {formatPKR(supplierTotalPaid)}
+                  </span>
+                </div>
+                <div className="p-2.5 bg-amber-500 text-slate-950 rounded-xl text-center shadow-xs">
+                  <span className="text-[10px] uppercase font-black block text-slate-900">Net Balance Due</span>
+                  <span className="font-mono font-black text-xs mt-0.5 block">
+                    {formatPKR(supplierNetPayable)}
+                  </span>
+                </div>
+              </div>
+
+              {/* + Pay Supplier / Settle Debt Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setPaySupplierName(
+                    selectedSupplierName !== 'all' ? selectedSupplierName : uniqueSupplierNames[0] || 'Volker Life'
+                  );
+                  setPayAmount('');
+                  setPayNarration(
+                    `Supplier settlement for ${
+                      selectedSupplierName !== 'all' ? selectedSupplierName : 'Vendor'
+                    }`
+                  );
+                  setPaySlipNo(`PAY-VCH-${Date.now().toString().slice(-4)}`);
+                  setShowPaySupplierModal(true);
+                }}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-all hover:scale-[1.02] active:scale-95 whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Pay Supplier / Settle Debt</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* 6. Main Double-Entry Table Section (Matching Stitch Layout) */}
       <section className="w-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" id="printable-ledger">
         {/* Table Controls & Search Filter Bar */}
@@ -784,7 +1133,13 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter by Tx ID, Account, Ref Folio, Voucher No, or Narration..."
+                placeholder={
+                  subsidiaryFilter === 'supplier_payables'
+                    ? 'Search by Supplier Name (e.g. Volker Life), GRN Folio, or Narration across all records...'
+                    : subsidiaryFilter === 'customer_receivables'
+                    ? 'Filter by Customer Invoice, Slip #, or Narration...'
+                    : 'Filter by Tx ID, Account, Ref Folio, Voucher No, or Narration...'
+                }
                 className="w-full pl-9 pr-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-slate-800 shadow-xs"
               />
             </div>
@@ -869,6 +1224,105 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                   ))
                 )}
               </tbody>
+            </table>
+          ) : subsidiaryFilter === 'supplier_payables' ? (
+            /* Supplier Subsidiary Running Statement */
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-slate-800 text-white text-[11px] font-bold uppercase tracking-wider">
+                  <th className="py-3 px-4">Date &amp; Time</th>
+                  <th className="py-3 px-4">Ref / Folio #</th>
+                  <th className="py-3 px-4">Supplier / Vendor</th>
+                  <th className="py-3 px-4">Particulars &amp; Description</th>
+                  <th className="py-3 px-3 text-center">Tx Type</th>
+                  <th className="py-3 px-4 text-right text-emerald-300">Debit (Payment Out)</th>
+                  <th className="py-3 px-4 text-right text-rose-300">Credit (Inward Bill)</th>
+                  <th className="py-3 px-4 text-right">Balance Payable</th>
+                  <th className="py-3 px-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-mono">
+                {filteredSupplierTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-8 text-center text-slate-400 font-sans">
+                      No supplier invoices, GRN stock receipts, or payments found matching criteria.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSupplierTransactions.map((tx) => (
+                    <tr key={tx.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4 text-slate-600 font-sans whitespace-nowrap">
+                        {formatDateTime(tx.date)}
+                      </td>
+                      <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
+                        {tx.refNo}
+                      </td>
+                      <td className="py-3 px-4 font-sans font-bold text-slate-900">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200">
+                          {tx.supplierName}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-sans text-slate-800">
+                        <div>{tx.description}</div>
+                        {tx.paymentMethod && (
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            via {tx.paymentMethod}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-center font-sans">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                            tx.type === 'CREDIT'
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          }`}
+                        >
+                          {tx.type === 'CREDIT' ? 'Credit (Bill)' : 'Debit (Payment)'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold text-emerald-600">
+                        {tx.debit > 0 ? formatPKR(tx.debit) : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold text-rose-600">
+                        {tx.credit > 0 ? formatPKR(tx.credit) : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-black text-slate-900">
+                        {formatPKR(tx.runningBalance)}
+                      </td>
+                      <td className="py-3 px-3 text-center font-sans">
+                        {tx.originalEntry && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedVoucherForReceipt(tx.originalEntry!)}
+                            className="p-1 rounded hover:bg-slate-100 text-slate-600 hover:text-slate-900 cursor-pointer"
+                            title="Print Voucher Receipt"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              <tfoot className="bg-slate-50 font-bold border-t border-slate-200">
+                <tr>
+                  <td colSpan={5} className="py-3 px-4 text-slate-700 uppercase font-extrabold text-right">
+                    Current Statement Totals:
+                  </td>
+                  <td className="py-3 px-4 text-right text-emerald-600 font-mono font-black">
+                    {formatPKR(supplierTotalPaid)}
+                  </td>
+                  <td className="py-3 px-4 text-right text-rose-600 font-mono font-black">
+                    {formatPKR(supplierTotalBills)}
+                  </td>
+                  <td className="py-3 px-4 text-right text-slate-900 font-mono font-black">
+                    {formatPKR(supplierNetPayable)}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           ) : (
             /* General Double-Entry Day Book Table */
@@ -1488,8 +1942,19 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                   </h4>
                   <p className="text-[10px] text-slate-500">Mingora Swat Depot • PrimeLink Hub</p>
                   <p className="text-[10px] font-mono text-slate-400 mt-0.5">NTN: 5829103-1 • SRO 450(I)/2024</p>
-                  <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full bg-slate-900 text-white font-bold text-[10px]">
-                    OFFICIAL CASH RECEIPT
+                  <span
+                    className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-white font-bold text-[10px] uppercase ${
+                      selectedVoucherForReceipt.category === 'Supplier Payment' ||
+                      selectedVoucherForReceipt.type === 'cash_out'
+                        ? 'bg-rose-700'
+                        : 'bg-slate-900'
+                    }`}
+                  >
+                    {selectedVoucherForReceipt.category === 'Supplier Payment'
+                      ? 'OFFICIAL SUPPLIER PAYMENT VOUCHER'
+                      : selectedVoucherForReceipt.type === 'cash_out'
+                      ? 'OFFICIAL PAYMENT VOUCHER'
+                      : 'OFFICIAL CASH RECEIPT'}
                   </span>
                 </div>
 
@@ -1506,9 +1971,16 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                     <span className="text-slate-800">{formatDateTime(selectedVoucherForReceipt.date)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500 font-sans">Received From:</span>
+                    <span className="text-slate-500 font-sans">
+                      {selectedVoucherForReceipt.category === 'Supplier Payment' ||
+                      selectedVoucherForReceipt.type === 'cash_out'
+                        ? 'Paid To / Payee:'
+                        : 'Received From:'}
+                    </span>
                     <span className="font-bold text-slate-900 font-sans">
-                      {selectedVoucherForReceipt.customerName || 'Direct Counter Deposit'}
+                      {selectedVoucherForReceipt.supplierName ||
+                        selectedVoucherForReceipt.customerName ||
+                        'Direct Cash Desk'}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -1520,9 +1992,35 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                 </div>
 
                 {/* Amount Box */}
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-                  <span className="text-[10px] uppercase font-bold text-emerald-800 block">Amount Received</span>
-                  <span className="font-mono text-xl font-black text-emerald-700 block mt-0.5">
+                <div
+                  className={`p-3 border rounded-xl text-center ${
+                    selectedVoucherForReceipt.category === 'Supplier Payment' ||
+                    selectedVoucherForReceipt.type === 'cash_out'
+                      ? 'bg-rose-50 border-rose-200'
+                      : 'bg-emerald-50 border-emerald-200'
+                  }`}
+                >
+                  <span
+                    className={`text-[10px] uppercase font-bold block ${
+                      selectedVoucherForReceipt.category === 'Supplier Payment' ||
+                      selectedVoucherForReceipt.type === 'cash_out'
+                        ? 'text-rose-800'
+                        : 'text-emerald-800'
+                    }`}
+                  >
+                    {selectedVoucherForReceipt.category === 'Supplier Payment' ||
+                    selectedVoucherForReceipt.type === 'cash_out'
+                      ? 'Amount Disbursed / Settled'
+                      : 'Amount Received'}
+                  </span>
+                  <span
+                    className={`font-mono text-xl font-black block mt-0.5 ${
+                      selectedVoucherForReceipt.category === 'Supplier Payment' ||
+                      selectedVoucherForReceipt.type === 'cash_out'
+                        ? 'text-rose-700'
+                        : 'text-emerald-700'
+                    }`}
+                  >
                     {formatPKR(selectedVoucherForReceipt.amount)}
                   </span>
                 </div>
@@ -1537,7 +2035,12 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                 <div className="pt-4 flex justify-between text-[10px] text-slate-500">
                   <div className="text-center">
                     <div className="w-24 border-b border-slate-300 pb-1"></div>
-                    <span className="mt-1 block">Customer Sign</span>
+                    <span className="mt-1 block">
+                      {selectedVoucherForReceipt.category === 'Supplier Payment' ||
+                      selectedVoucherForReceipt.type === 'cash_out'
+                        ? 'Payee / Supplier Sign'
+                        : 'Customer Sign'}
+                    </span>
                   </div>
                   <div className="text-center">
                     <div className="w-24 border-b border-slate-300 pb-1 font-mono font-bold text-slate-800">
@@ -1784,6 +2287,193 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                 Permanently Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Pay Supplier / Settle Debt Voucher Modal */}
+      {showPaySupplierModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black">
+                  <Truck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm leading-tight">Pay Supplier / Settle Debt</h3>
+                  <span className="text-[10px] text-slate-400">
+                    Disburse Cash / Bank Payment to Settle GRN Debt
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPaySupplierModal(false)}
+                className="text-slate-400 hover:text-white font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const amt = parseFloat(payAmount);
+                if (isNaN(amt) || amt <= 0) return;
+                const sName = paySupplierName.trim() || 'Volker Life';
+                const createdEntry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'> = {
+                  date: payDate
+                    ? `${payDate}T${new Date().toTimeString().slice(0, 8)}`
+                    : new Date().toISOString(),
+                  accountCode: 'AC-5010',
+                  category: 'Supplier Payment',
+                  narration: payNarration.trim() || `Payment to ${sName} for GRN stock settlement`,
+                  amount: amt,
+                  type: 'cash_out',
+                  slipNo: paySlipNo,
+                  supplierName: sName,
+                  paymentMethod: payMethod,
+                  recordedBy: 'Executive Cashier (Console)',
+                  tenant_id: 'tenant_pk_swat_1042',
+                };
+
+                await onAddEntry(createdEntry);
+                setShowPaySupplierModal(false);
+
+                // Auto-open voucher slip preview for instant printing
+                setSelectedVoucherForReceipt({
+                  ...createdEntry,
+                  id: `pay-${Date.now()}`,
+                  entryNo: paySlipNo,
+                  synced: false,
+                });
+              }}
+              className="p-6 space-y-4 text-xs"
+            >
+              {/* Supplier Selection */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Select Supplier / Vendor *
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={paySupplierName}
+                    onChange={(e) => setPaySupplierName(e.target.value)}
+                    className="flex-1 h-10 px-3 rounded-xl bg-slate-50 border border-slate-300 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                  >
+                    {uniqueSupplierNames.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={paySupplierName}
+                    onChange={(e) => setPaySupplierName(e.target.value)}
+                    placeholder="Or type custom vendor name"
+                    className="flex-1 h-10 px-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Amount & Date */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Settlement Amount (PKR) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
+                    placeholder="e.g. 250000"
+                    required
+                    className="w-full h-10 px-3 rounded-xl bg-slate-50 border border-slate-300 font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Voucher Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={payDate}
+                    onChange={(e) => setPayDate(e.target.value)}
+                    required
+                    className="w-full h-10 px-3 rounded-xl bg-slate-50 border border-slate-300 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Channel & Voucher # */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Payment Method / Source
+                  </label>
+                  <select
+                    value={payMethod}
+                    onChange={(e) => setPayMethod(e.target.value as any)}
+                    className="w-full h-10 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 px-3 focus:outline-none text-xs"
+                  >
+                    <option value="Cash">Cash (Vault / Drawer)</option>
+                    <option value="Bank AL Habib / Raast">Bank AL Habib / Raast</option>
+                    <option value="EasyPaisa">EasyPaisa / JazzCash</option>
+                    <option value="Cheque">Cross Cheque / Pay Order</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Voucher Ref / Slip #
+                  </label>
+                  <input
+                    type="text"
+                    value={paySlipNo}
+                    onChange={(e) => setPaySlipNo(e.target.value)}
+                    required
+                    className="w-full h-10 px-3 rounded-xl bg-slate-50 border border-slate-300 font-mono font-bold text-slate-900 focus:outline-none text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Narration */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Transaction Particulars / Memo
+                </label>
+                <input
+                  type="text"
+                  value={payNarration}
+                  onChange={(e) => setPayNarration(e.target.value)}
+                  placeholder="e.g. Settle partial invoice of GRN-1002"
+                  className="w-full h-10 px-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none text-xs"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="pt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPaySupplierModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-98"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Post &amp; Print Voucher</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

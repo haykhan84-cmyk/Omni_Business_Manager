@@ -303,7 +303,7 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
       subtitle: string;
       refNo: string;
       amount: number;
-      type: 'order' | 'cash_in' | 'cash_out';
+      type: 'order' | 'cash_in' | 'cash_out' | 'credit' | 'debit';
       timestamp: string;
       synced: boolean;
     };

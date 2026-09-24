@@ -517,14 +517,14 @@ export async function syncRoznamchaEntryToSupabase(entry: RoznamchaEntry) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       entry.id
     );
-    const typeEnum = entry.type === 'cash_in' ? 'CASH_IN' : 'CASH_OUT';
+    const typeEnum = entry.type === 'cash_in' ? 'CASH_IN' : entry.type === 'credit' ? 'CREDIT' : 'CASH_OUT';
 
     const payload: any = {
       tenant_id: DEFAULT_TENANT_ID,
       entry_date: entry.date ? entry.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
       type: typeEnum,
       category: entry.category || 'General',
-      account_name: entry.customerName || 'Main Cash In Hand',
+      account_name: entry.supplierName || entry.customerName || 'Main Cash In Hand',
       amount: entry.amount || 0,
       description: `${entry.entryNo || ''} - ${entry.narration || ''}`.trim(),
     };

@@ -139,6 +139,7 @@ export type RoznamchaCategory =
   | 'Van Repair & Toll'
   | 'Office & Pantry'
   | 'Supplier Payment'
+  | 'Supplier Bill / Inward Stock'
   | 'Bank Cash Deposit'
   | 'Other';
 
@@ -146,7 +147,7 @@ export interface RoznamchaEntry {
   id: string;
   entryNo: string;
   date: string; // ISO string
-  type: 'cash_in' | 'cash_out';
+  type: 'cash_in' | 'cash_out' | 'credit' | 'debit';
   category: RoznamchaCategory;
   amount: number;
   customerId?: string;

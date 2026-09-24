@@ -223,6 +223,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             entries={roznamcha}
             customers={customers}
             orders={orders}
+            grnDockets={grnDockets}
             openingCash={openingCash}
             bankAccount={bankAccount}
             companyProfile={companyProfile}
