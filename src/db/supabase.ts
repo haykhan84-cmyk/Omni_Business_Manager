@@ -13,6 +13,108 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export const DEFAULT_TENANT_ID = 'primelink-main';
 
 /**
+ * Hardcoded Demo Product IDs (Dalda, Mezan, Tarang, Tapal, Knorr, National, Nestle)
+ * Internal demo IDs that must never be created, auto-seeded, or restored.
+ */
+export const HARDCODED_DEMO_PRODUCT_IDS = new Set<string>([
+  'prod-dal-01',
+  'prod-dld-504',
+  'prod-dld-gh1',
+  'prod-eng-118',
+  'prod-mzn-501',
+  'prod-nat-780',
+  'prod-nes-220',
+  'prod-tpl-901',
+  'prod-unl-442',
+]);
+
+const DEMO_PREFIXES = [
+  'prod-dal-',
+  'prod-dld-',
+  'prod-eng-',
+  'prod-mzn-',
+  'prod-nat-',
+  'prod-nes-',
+  'prod-tpl-',
+  'prod-unl-',
+];
+
+/**
+ * Identifies whether a product is one of the hardcoded internal demo items
+ */
+export function isDemoProduct(id: string, name?: string, brand?: string): boolean {
+  if (HARDCODED_DEMO_PRODUCT_IDS.has(id)) return true;
+  for (const prefix of DEMO_PREFIXES) {
+    if (id.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+/**
+ * Persistent Tombstone Registry:
+ * Tracks IDs of products permanently deleted by the user so that remote pulls,
+ * syncs, or app restarts NEVER resurrect them.
+ */
+const DELETED_PRODUCT_IDS_KEY = 'omnisales_deleted_product_ids';
+
+export function getDeletedProductIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_PRODUCT_IDS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function recordDeletedProductId(productId: string): void {
+  try {
+    const set = getDeletedProductIds();
+    set.add(productId);
+    localStorage.setItem(DELETED_PRODUCT_IDS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('Failed to record deleted product ID in localStorage:', e);
+  }
+}
+
+/**
+ * Hard Deletes a product from remote Supabase table ('products').
+ * Also registers it in the local tombstone set to prevent any future resurrection.
+ */
+export async function deleteProductFromSupabase(productId: string): Promise<boolean> {
+  recordDeletedProductId(productId);
+  try {
+    const { error } = await supabase.from('products').delete().eq('id', productId);
+    if (error) {
+      console.warn(`[Supabase Delete] Warning deleting product ${productId}:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn(`[Supabase Delete] Network error deleting product ${productId}:`, err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * Purges internal demo items from local Dexie IndexedDB while strictly
+ * preserving 100% of all real user-created products, customers, and orders.
+ */
+export async function purgeDemoProductsFromDexie(): Promise<void> {
+  try {
+    const prods = await db.products.toArray();
+    const demoItems = prods.filter((p) => isDemoProduct(p.id, p.name, p.brand));
+    for (const item of demoItems) {
+      recordDeletedProductId(item.id);
+      await db.products.delete(item.id);
+    }
+  } catch (err) {
+    console.warn('Error purging demo products from Dexie:', err);
+  }
+}
+
+/**
  * Checks connectivity to the live Supabase project
  */
 export async function checkSupabaseConnection(): Promise<{
@@ -96,7 +198,13 @@ export async function syncProductToSupabase(product: Product) {
 export async function syncProductsToSupabase(products: Product[]) {
   if (!products || products.length === 0) return 0;
   try {
-    const payloads = products.map((p) => ({
+    const deletedIds = getDeletedProductIds();
+    const validProducts = products.filter(
+      (p) => !deletedIds.has(p.id) && !isDemoProduct(p.id, p.name, p.brand)
+    );
+    if (validProducts.length === 0) return 0;
+
+    const payloads = validProducts.map((p) => ({
       id: p.id,
       tenant_id: DEFAULT_TENANT_ID,
       sku: p.sku,
@@ -354,11 +462,21 @@ export async function pullAndMergeFromSupabase(): Promise<{
   let roznamchaRestored = 0;
 
   try {
+    const deletedIds = getDeletedProductIds();
+
     // 1. Fetch Remote Products
     const { data: remoteProducts, error: pErr } = await supabase.from('products').select('*');
     if (!pErr && Array.isArray(remoteProducts)) {
       for (const rp of remoteProducts) {
         if (!rp.id) continue;
+
+        // Never resurrect a product that the user permanently deleted or any internal demo product
+        if (deletedIds.has(rp.id) || isDemoProduct(rp.id, rp.title, rp.company)) {
+          // If it somehow exists in local Dexie, remove it permanently
+          await db.products.delete(rp.id);
+          continue;
+        }
+
         const existing = await db.products.get(rp.id);
         const productData: Product = {
           id: rp.id,

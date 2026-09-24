@@ -108,61 +108,18 @@ export const INITIAL_ROUTE_STOPS: RouteStop[] = [];
 export const INITIAL_ZERO_SALES: ZeroSaleCall[] = [];
 
 /**
- * Optional sample FMCG product catalog for testing when explicitly requested
+ * 100% Clean Catalog: Demo items permanently removed.
+ * User catalog is fully preserved and protected from auto-seeding.
  */
-export const SAMPLE_PRODUCTS: Product[] = [
-  {
-    id: 'prod-dld-504',
-    sku: 'SKU-DLD-504',
-    name: 'Dalda Premium Cooking Oil 5L Tin',
-    brand: 'Dalda Foods',
-    category: 'Cooking Oil & Ghee',
-    packSize: 4,
-    tradePrice: 11400,
-    retailPrice: 3050,
-    cartonStock: 50,
-    piecesStock: 0,
-    minStockAlert: 10,
-    barcode: '8964000105210',
-    taxSchedule: '3rd Sch (MRP)',
-  },
-  {
-    id: 'prod-tpl-901',
-    sku: 'SKU-TPL-901',
-    name: 'Tapal Danedar Tea Family Pack 900g',
-    brand: 'Tapal Tea Ltd',
-    category: 'Tea & Confectionery',
-    packSize: 24,
-    tradePrice: 29040,
-    retailPrice: 1280,
-    cartonStock: 40,
-    piecesStock: 0,
-    minStockAlert: 10,
-    barcode: '8964001238910',
-    taxSchedule: '18% GST (FBR)',
-  },
-];
-
-export const SAMPLE_CUSTOMERS: Customer[] = [
-  {
-    id: 'cust-demo-01',
-    name: 'Muhammad Tariq',
-    shopName: 'Madina Cash & Carry Superstore',
-    route: 'Main Bazaar Route',
-    phone: '0300-1234567',
-    address: 'Main Bazaar Chowk',
-    creditLimit: 500000,
-    currentBalance: 0,
-    status: 'active',
-    atlStatus: 'filer',
-  },
-];
+export const SAMPLE_PRODUCTS: Product[] = [];
+export const SAMPLE_CUSTOMERS: Customer[] = [];
 
 /**
- * seedDatabaseIfEmpty: In a clean slate, will not inject mock data
+ * seedDatabaseIfEmpty: Never auto-seeds demo data on startup.
+ * The catalog remains exactly as the user configured.
  */
 export async function seedDatabaseIfEmpty() {
-  // Empty clean slate - no automatic dummy data injection
+  // No automatic dummy data injection
 }
 
 /**
@@ -193,9 +150,8 @@ export async function clearAllDatabaseData(): Promise<void> {
 }
 
 /**
- * Load optional sample FMCG products and retailers on explicit user demand
+ * loadSampleTestingData: Kept safe and empty so demo items never repopulate
  */
 export async function loadSampleTestingData(): Promise<void> {
-  await db.products.bulkAdd(SAMPLE_PRODUCTS);
-  await db.customers.bulkAdd(SAMPLE_CUSTOMERS);
+  // Demo items permanently removed to protect user catalog
 }

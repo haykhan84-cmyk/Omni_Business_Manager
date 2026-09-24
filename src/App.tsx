@@ -23,6 +23,9 @@ import {
   syncAllToSupabase,
   syncBidirectional,
   pullAndMergeFromSupabase,
+  deleteProductFromSupabase,
+  purgeDemoProductsFromDexie,
+  recordDeletedProductId,
 } from './db/supabase';
 
 export default function App() {
@@ -101,6 +104,10 @@ export default function App() {
   // Initialize DB, restore records, and listen to online status
   useEffect(() => {
     async function init() {
+      // 0. Ensure internal hardcoded demo items (Dalda, Mezan, Tarang, Tapal, Knorr, National, Nestle)
+      // are purged while preserving 100% of all real user-created products, customers, and orders.
+      await purgeDemoProductsFromDexie();
+
       // 1. Immediately restore all local records from Dexie IndexedDB
       await refreshData();
       setIsDbReady(true);
@@ -500,8 +507,24 @@ export default function App() {
     await refreshData();
   };
 
+  // Hard delete product from local Dexie.js AND remote Supabase table
   const handleDeleteProduct = async (productId: string) => {
+    // 1. Record in local tombstone registry so sync never restores it
+    recordDeletedProductId(productId);
+
+    // 2. Delete the record from local Dexie.js
     await db.products.delete(productId);
+
+    // 3. Delete the record from remote Supabase table
+    try {
+      await deleteProductFromSupabase(productId);
+      fetchSupabaseLiveCounts().then(setSupabaseCounts).catch(() => {});
+      setLastSyncedAt(new Date().toISOString());
+    } catch (err) {
+      console.warn('[Supabase Delete] Failed to delete remote product:', err);
+    }
+
+    // 4. Refresh local state
     await refreshData();
   };
 

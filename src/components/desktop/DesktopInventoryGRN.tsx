@@ -68,7 +68,7 @@ export const DesktopInventoryGRN: React.FC<DesktopInventoryGRNProps> = ({
   // Manual Fast Intake Modal State
   const [isFastIntakeOpen, setIsFastIntakeOpen] = useState(false);
   const [intakeProductId, setIntakeProductId] = useState<string>(products[0]?.id || '');
-  const [intakeVendor, setIntakeVendor] = useState('Dalda Foods Pakistan Ltd');
+  const [intakeVendor, setIntakeVendor] = useState(products[0]?.brand || 'PrimeLink Distribution');
   const [intakePoNo, setIntakePoNo] = useState(`PO-2026-${Math.floor(1000 + Math.random() * 9000)}`);
   const [intakeGrnNo, setIntakeGrnNo] = useState(`GRN-SWT-${Math.floor(100 + Math.random() * 900)}`);
   const [intakeCartons, setIntakeCartons] = useState(100);
@@ -1118,7 +1118,7 @@ export const DesktopInventoryGRN: React.FC<DesktopInventoryGRNProps> = ({
                   required
                   value={intakeVendor}
                   onChange={(e) => setIntakeVendor(e.target.value)}
-                  placeholder="e.g. Dalda Foods Pakistan Ltd"
+                  placeholder="e.g. Zams Group / Principal Supplier"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none"
                 />
               </div>

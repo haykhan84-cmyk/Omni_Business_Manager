@@ -1753,7 +1753,7 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
                     type="text"
                     value={newProdName}
                     onChange={(e) => setNewProdName(e.target.value)}
-                    placeholder="e.g. Mezan Banaspati Ghee 1kg"
+                    placeholder="e.g. Softo Slim 50 x 2 Ply"
                     required
                     className="h-11 px-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-semibold outline-none focus:ring-2 focus:ring-amber-500"
                   />
@@ -1776,7 +1776,7 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
                     type="text"
                     value={newProdBrand}
                     onChange={(e) => setNewProdBrand(e.target.value)}
-                    placeholder="e.g. Mezan / Dalda"
+                    placeholder="e.g. Zams Group / Volker Life"
                     className="h-11 px-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 outline-none"
                   />
                 </div>
