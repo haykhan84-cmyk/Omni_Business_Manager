@@ -99,6 +99,8 @@ export const MobileFieldView: React.FC<MobileFieldViewProps> = ({
           <MobileOrderBooking
             products={products}
             customers={customers}
+            orders={orders}
+            currentUser={currentUser}
             onSaveOrder={onSaveOrder}
             isOnline={isOnline}
           />

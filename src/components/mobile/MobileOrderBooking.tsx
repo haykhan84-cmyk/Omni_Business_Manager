@@ -18,14 +18,17 @@ import {
   Lock,
   Package,
 } from 'lucide-react';
-import { Customer, Order, OrderItem, Product, SalesRoute, RouteStop, ZeroSaleCall } from '../../types';
+import { Customer, Order, OrderItem, Product, SalesRoute, RouteStop, ZeroSaleCall, UserAccount } from '../../types';
 import { calculateOrderItem, formatPKR, formatAmount, formatRate } from '../../utils/calculations';
 import { Thermal80mmReceipt } from '../shared/PrintTemplates';
 import { getTenantRoutes, getTenantRouteStops, logZeroSaleCall, ACTIVE_TENANT_ID } from '../../db/localDb';
+import { getNextSequenceNumber, formatInvoiceId, formatShopId } from '../../utils/sequenceNumbering';
 
 interface MobileOrderBookingProps {
   products: Product[];
   customers: Customer[];
+  orders?: Order[];
+  currentUser?: UserAccount;
   onSaveOrder: (order: Order, cashCollected: number) => Promise<void>;
   isOnline: boolean;
 }
@@ -33,6 +36,8 @@ interface MobileOrderBookingProps {
 export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
   products,
   customers,
+  orders = [],
+  currentUser,
   onSaveOrder,
   isOnline,
 }) => {
@@ -283,14 +288,16 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
     if (!selectedCustomer || cartItems.length === 0) return;
     setIsSaving(true);
     try {
-      const orderNo = `ORD-${Date.now().toString().slice(-6)}`;
+      const nextInvoiceNum = getNextSequenceNumber(orders, (o) => o.invoiceNumber || o.orderNo);
+      const orderNo = formatInvoiceId(nextInvoiceNum);
       const newOrder: Order = {
-        id: `ord-${Date.now()}`,
+        id: `ord-${nextInvoiceNum}-${Date.now().toString().slice(-4)}`,
         orderNo,
+        invoiceNumber: nextInvoiceNum,
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
         shopName: selectedCustomer.shopName,
-        route: selectedRouteName,
+        route: currentUser?.assignedRoute || selectedRouteName,
         date: new Date().toISOString(),
         items: cartItems,
         totalCartons,
@@ -305,6 +312,9 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
         synced: isOnline,
         notes: orderNotes,
         status: 'booked',
+        bookerId: currentUser?.employeeId || currentUser?.id || 'EMP-101',
+        bookerName: currentUser?.name || 'Order Booker',
+        salesmanName: currentUser?.name || 'Order Booker',
       };
 
       await onSaveOrder(newOrder, cashCollected);
@@ -409,7 +419,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               ) : (
                 routeCustomers.map((c, idx) => (
                   <option key={c.id} value={c.id}>
-                    Stop #{idx + 1}: {c.shopName} ({c.name})
+                    Stop #{idx + 1} • Shop #{c.shopNumber || (idx + 1)}: {c.shopName} ({c.name})
                   </option>
                 ))
               )}
@@ -604,7 +614,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
           </div>
         )}
 
-        {filteredProducts.map((product) => {
+        {filteredProducts.map((product, idx) => {
           const qty = cartQuantities[product.id] || { cartons: 0, pieces: 0, discountPercent: 0 };
           const retailPrice =
             product.retailPrice && product.retailPrice > 0
@@ -633,7 +643,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
-                      {product.sku}
+                      {product.skuNumber ? `SKU #${product.skuNumber}` : (product.sku.startsWith('SKU') ? product.sku : `SKU #${idx + 1}`)}
                     </span>
                     <span className="text-[10px] text-amber-700 bg-amber-50 font-bold px-1.5 py-0.5 rounded">
                       {product.brand}

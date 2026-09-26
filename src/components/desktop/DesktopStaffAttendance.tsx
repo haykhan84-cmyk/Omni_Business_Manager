@@ -44,6 +44,7 @@ import { db } from '../../db';
 import { ACTIVE_TENANT_ID } from '../../db/localDb';
 import { syncEmployeeToSupabase, deleteEmployeeFromSupabase } from '../../db/supabase';
 import { formatPKR, formatDate, formatDateTime } from '../../utils/calculations';
+import { getNextSequenceNumber, formatEmployeeId } from '../../utils/sequenceNumbering';
 
 interface DesktopStaffAttendanceProps {
   roznamcha: RoznamchaEntry[];
@@ -100,6 +101,7 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // New Employee Form State
+  const [newEmpCode, setNewEmpCode] = useState('Employee #1');
   const [newEmpName, setNewEmpName] = useState('');
   const [newEmpFatherName, setNewEmpFatherName] = useState('');
   const [newEmpPhone, setNewEmpPhone] = useState('');
@@ -382,6 +384,13 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
 
   // 4. Action Handlers
 
+  // Open Add Employee Modal with Next Sequential Number
+  const openAddEmployeeModal = () => {
+    const nextNum = getNextSequenceNumber(employees, (e) => e.id);
+    setNewEmpCode(formatEmployeeId(nextNum));
+    setShowAddEmployeeModal(true);
+  };
+
   // Onboard New Employee
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -392,8 +401,9 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
 
     setIsSubmitting(true);
     try {
+      const finalId = newEmpCode.trim() || formatEmployeeId(getNextSequenceNumber(employees, (e) => e.id));
       const newEmp: Employee = {
-        id: `emp-${Date.now().toString().slice(-6)}`,
+        id: finalId,
         tenant_id: ACTIVE_TENANT_ID,
         name: newEmpName.trim(),
         father_name: newEmpFatherName.trim() || undefined,
@@ -868,7 +878,7 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
           {/* Action Trigger Buttons */}
           <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
             <button
-              onClick={() => setShowAddEmployeeModal(true)}
+              onClick={openAddEmployeeModal}
               className="h-8 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
               type="button"
             >
@@ -1399,6 +1409,23 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
             </div>
 
             <form onSubmit={handleAddEmployee} className="p-5 overflow-y-auto space-y-4 text-xs">
+              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                <label className="block text-[11px] font-bold uppercase text-amber-900 mb-1">
+                  Employee ID / Sequence Number *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newEmpCode}
+                  onChange={(e) => setNewEmpCode(e.target.value)}
+                  placeholder="e.g. Employee #1"
+                  className="w-full px-3 py-2 bg-white rounded-xl border border-amber-300 text-slate-900 font-mono font-bold"
+                />
+                <span className="text-[10px] text-amber-800 mt-1 block">
+                  Universal Sequential Integer ID (Employee #1, #2...). Auto-filled with next integer, editable if needed.
+                </span>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">

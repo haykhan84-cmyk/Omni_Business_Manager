@@ -59,6 +59,13 @@ import {
   ACTIVE_TENANT_ID,
 } from '../../db/localDb';
 import { formatPKR } from '../../utils/calculations';
+import { RouteDeliverySummaryEngine } from './RouteDeliverySummaryEngine';
+import {
+  getNextSequenceNumber,
+  formatRouteId,
+  formatGatePassId,
+  extractSequenceNumber,
+} from '../../utils/sequenceNumbering';
 
 interface DesktopSalesRoutesProps {
   products: Product[];
@@ -68,6 +75,7 @@ interface DesktopSalesRoutesProps {
   onRefreshData?: () => Promise<void>;
   onNavigateTab?: (tab: string) => void;
   onDeleteOrder?: (orderId: string) => Promise<void>;
+  onAddRoznamchaEntry?: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
 }
 
 export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
@@ -78,7 +86,9 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
   onRefreshData,
   onNavigateTab,
   onDeleteOrder,
+  onAddRoznamchaEntry,
 }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'routes_overview' | 'delivery_summaries'>('routes_overview');
   // Routes & Beats state
   const [routes, setRoutes] = useState<SalesRoute[]>([]);
   const [routeStops, setRouteStops] = useState<RouteStop[]>([]);
@@ -377,22 +387,25 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
     const totalCartons = items.reduce((acc, it) => acc + it.cartons, 0);
     const totalPieces = items.reduce((acc, it) => acc + it.pieces, 0);
     const totalAmount = items.reduce((acc, it) => acc + it.totalAmount, 0);
+    const nextGatePassNum = getNextSequenceNumber(routes, (r) => r.id);
 
     return {
       id: `LOAD-${route.route_code.replace(/[^A-Za-z0-9]/g, '')}-20260922`,
-      gatePassNo: `GP-SWT-${route.route_code.replace(/[^A-Za-z0-9]/g, '')}-094`,
+      gatePassNo: formatGatePassId(nextGatePassNum),
+      gatePassNumber: nextGatePassNum,
       routeId: route.id,
       routeName: route.route_name,
       routeCode: route.route_code,
       vehicleNumber: route.vehicle_number,
       driverName: route.assigned_driver_name || 'Tariq Mehmood',
       bookerName: route.assigned_booker_name || 'Tariq Khan',
-      dispatchDate: '24 Oct 2025 // Shift-01',
+      dispatchDate: new Date().toLocaleDateString('en-GB') + ' // Shift-01',
       shift: 'Morning Shift-01 (07:30 - 15:30)',
       items,
       totalCartons,
       totalPieces,
       totalAmount,
+      orders: routeOrders,
       status: 'Approved',
     };
   };
@@ -592,9 +605,10 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
 
           <button
             onClick={() => {
+              const nextRouteNum = getNextSequenceNumber(routes, (r) => r.route_code || r.id);
               setRouteFormData({
                 tenant_id: ACTIVE_TENANT_ID,
-                route_code: `#SWT-R0${routes.length + 1}`,
+                route_code: formatRouteId(nextRouteNum),
                 route_name: '',
                 assigned_booker_id: employees.find((e) => e.role.includes('Booker'))?.id || 'emp-104',
                 assigned_booker_name: 'Tariq Khan',
@@ -618,6 +632,46 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
         </div>
       </div>
 
+      {/* Sub-Tab Navigation Switcher */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 print:hidden">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('routes_overview')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeSubTab === 'routes_overview'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+          }`}
+        >
+          <MapPin className="w-4 h-4" />
+          <span>Route Beats &amp; Territory Oversight</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('delivery_summaries')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeSubTab === 'delivery_summaries'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+          }`}
+        >
+          <Truck className="w-4 h-4" />
+          <span>Route Delivery &amp; Recovery Summary (Summary #1, #2... &amp; Evening Settlement)</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'delivery_summaries' ? (
+        <RouteDeliverySummaryEngine
+          orders={orders}
+          customers={customers}
+          routes={routes}
+          employees={employees}
+          roznamcha={roznamcha}
+          onAddRoznamchaEntry={onAddRoznamchaEntry}
+          onRefreshData={onRefreshData}
+        />
+      ) : (
+        <>
       {/* Section 1: KPI Summary Bar (4 High-Density Cards) */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 w-full">
         {/* Card 1: Gross Sales */}
@@ -1394,6 +1448,8 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
           <span>OMNISALES ROUTE MATRIX v4.18.2</span>
         </div>
       </div>
+      </>
+      )}
 
       {/* ============================================================
           MODAL 1: OUTLET ASSIGNMENT & DROP SEQUENCING (Requirement 2)
@@ -1814,7 +1870,9 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
                 <div>
                   <h3 className="text-lg font-bold">Consolidated Route Loading Sheet & Gate Pass</h3>
                   <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <span>Gate Pass #{selectedRouteForModal.route_code}-GP-094</span>
+                    <span className="font-bold text-amber-400">
+                      {formatGatePassId(extractSequenceNumber(selectedRouteForModal.route_code) || 1)}
+                    </span>
                     <span>•</span>
                     <span>Van: {selectedRouteForModal.vehicle_number}</span>
                     <span>•</span>
@@ -1950,7 +2008,58 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
                     </table>
                   </div>
 
-                  {/* Signatures & Gate Clearance Block */}
+                  {/* Order Deliveries Manifest Breakdown (Bill # | Shop # | Cartons | Loose Pcs | Total Bill) */}
+                  <div className="border border-slate-300 rounded-xl overflow-hidden mt-4">
+                    <div className="bg-slate-900 text-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Truck className="w-4 h-4 text-amber-400" />
+                        Order Deliveries Breakdown (Drop Manifest)
+                      </span>
+                      <span className="text-[11px] font-mono text-amber-300">
+                        {sheet.orders && sheet.orders.length > 0 ? `${sheet.orders.length} Invoices Scheduled` : 'Route Orders'}
+                      </span>
+                    </div>
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-3">Bill #</th>
+                          <th className="py-2.5 px-3">Shop # &amp; Name</th>
+                          <th className="py-2.5 px-3 text-center">Cartons</th>
+                          <th className="py-2.5 px-3 text-center">Loose Pcs</th>
+                          <th className="py-2.5 px-3 text-right">Total Bill</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 font-mono text-slate-800">
+                        {(sheet.orders && sheet.orders.length > 0
+                          ? sheet.orders
+                          : orders.slice(0, 3)
+                        ).map((ord, idx) => {
+                          const billNum = extractSequenceNumber(ord.orderNo) || ord.invoiceNumber || (idx + 1);
+                          const cust = customers.find((c) => c.id === ord.customerId);
+                          const shopNum = cust?.shopNumber || extractSequenceNumber(cust?.id || ord.customerId) || (idx + 1);
+                          return (
+                            <tr key={ord.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                              <td className="py-2.5 px-3 font-bold text-amber-800">
+                                Bill #{billNum}
+                              </td>
+                              <td className="py-2.5 px-3 font-sans font-semibold text-slate-900">
+                                Shop #{shopNum} ({ord.shopName})
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-bold text-[#35618d]">
+                                {ord.totalCartons}
+                              </td>
+                              <td className="py-2.5 px-3 text-center text-slate-600">
+                                {ord.totalPieces}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                                Rs. {ord.netBill.toLocaleString()}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                   <div className="mt-8 pt-6 border-t-2 border-dashed border-slate-300 grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs text-slate-700">
                     <div className="flex flex-col gap-8">
                       <span>Prepared by Warehouse Officer:</span>

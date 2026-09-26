@@ -53,11 +53,21 @@ export const Thermal80mmReceipt: React.FC<ThermalReceiptProps> = ({
           </div>
         </div>
 
+        {/* Prominent Sequential Header */}
+        <div className="bg-black text-white p-2 text-center rounded mb-2.5">
+          <div className="font-black text-sm tracking-wider uppercase font-mono">
+            BILL / {order.orderNo.toUpperCase().includes('INVOICE') || order.orderNo.toUpperCase().includes('BILL') ? order.orderNo.toUpperCase() : `INVOICE #${order.orderNo}`}
+          </div>
+          <div className="text-[10px] text-gray-200 mt-0.5 font-sans font-bold">
+            {order.route} • {customer?.shopNumber ? `Shop #${customer.shopNumber} ` : ''}({order.shopName})
+          </div>
+        </div>
+
         {/* Invoice Meta */}
         <div className="border-b border-dashed border-gray-400 pb-2 mb-2 space-y-0.5 text-[11px]">
           <div className="flex justify-between font-bold">
-            <span>INV NO:</span>
-            <span>{order.orderNo}</span>
+            <span>BILL / INV NO:</span>
+            <span className="font-mono font-extrabold">{order.orderNo}</span>
           </div>
           <div className="flex justify-between">
             <span>DATE:</span>
@@ -68,9 +78,17 @@ export const Thermal80mmReceipt: React.FC<ThermalReceiptProps> = ({
             <span className="font-semibold truncate max-w-[170px]">{order.route}</span>
           </div>
           <div className="flex justify-between">
-            <span>CLIENT:</span>
-            <span className="font-bold truncate max-w-[170px]">{order.shopName}</span>
+            <span>CLIENT / SHOP:</span>
+            <span className="font-bold truncate max-w-[170px]">
+              {customer?.shopNumber ? `Shop #${customer.shopNumber}: ` : ''}{order.shopName}
+            </span>
           </div>
+          {order.bookerName && (
+            <div className="flex justify-between text-[10px]">
+              <span>BOOKER / SALES:</span>
+              <span className="font-semibold truncate max-w-[170px]">{order.bookerName}</span>
+            </div>
+          )}
           {customer?.phone && (
             <div className="flex justify-between text-[10px]">
               <span>PHONE:</span>
@@ -220,13 +238,13 @@ export const A4DeliveryInvoice: React.FC<A4DeliveryInvoiceProps> = ({
             </p>
           </div>
           <div className="text-right">
-            <span className="inline-block bg-gray-900 text-white font-mono font-bold px-3 py-1 text-xs rounded mb-2 uppercase">
-              Commercial Delivery Invoice
+            <span className="inline-block bg-black text-white font-mono font-black px-4 py-1.5 text-sm rounded mb-2 uppercase tracking-wide">
+              BILL / {order.orderNo.toUpperCase().includes('INVOICE') || order.orderNo.toUpperCase().includes('BILL') ? order.orderNo.toUpperCase() : `INVOICE #${order.orderNo}`}
             </span>
-            <div className="text-sm font-bold font-mono">
-              INVOICE #: {order.orderNo}
+            <div className="text-xs font-bold text-gray-800">
+              {order.route} • {customer?.shopNumber ? `Shop #${customer.shopNumber} ` : ''}({order.shopName})
             </div>
-            <div className="text-xs text-gray-600">
+            <div className="text-xs text-gray-600 mt-1">
               Date: {formatDateTime(order.date)}
             </div>
             <div className="text-xs text-gray-600">
@@ -241,7 +259,9 @@ export const A4DeliveryInvoice: React.FC<A4DeliveryInvoiceProps> = ({
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
               Bill To &amp; Delivery Destination:
             </h3>
-            <div className="text-base font-bold text-gray-900">{order.shopName}</div>
+            <div className="text-base font-bold text-gray-900">
+              {customer?.shopNumber ? `Shop #${customer.shopNumber}: ` : ''}{order.shopName}
+            </div>
             <div className="text-xs text-gray-700 font-medium">Attn: {order.customerName}</div>
             <div className="text-xs text-gray-600">{customer?.address || 'Mingora Bazaar'}</div>
             <div className="text-xs text-gray-600 mt-1">
@@ -259,7 +279,9 @@ export const A4DeliveryInvoice: React.FC<A4DeliveryInvoiceProps> = ({
               Assigned Route: <span className="font-bold text-blue-800">{order.route}</span>
             </div>
             <div className="text-xs text-gray-600">Dispatch Van: #12 (Toyota Hilux)</div>
-            <div className="text-xs text-gray-600">Sales Officer: Tariq Khan (OB-04)</div>
+            <div className="text-xs text-gray-600">
+              Sales Officer: {order.bookerName || order.salesmanName || 'Field Sales Officer'}
+            </div>
             <div className="mt-2 text-xs font-mono font-bold text-emerald-800 bg-emerald-50 inline-block px-2 py-0.5 rounded border border-emerald-200">
               FBR SRO Tax Compliant
             </div>

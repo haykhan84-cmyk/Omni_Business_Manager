@@ -26,14 +26,18 @@ import {
   Smartphone,
   CreditCard,
 } from 'lucide-react';
-import { BankAccount, CompanyProfile, Customer, Order } from '../../types';
+import { BankAccount, CompanyProfile, Customer, Order, SalesRoute, RoznamchaEntry } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
+import { RouteDeliverySummaryEngine } from './RouteDeliverySummaryEngine';
 
 interface DesktopPrintStudioProps {
   orders: Order[];
   customers: Customer[];
   bankAccount?: BankAccount;
   companyProfile?: CompanyProfile;
+  routes?: SalesRoute[];
+  roznamcha?: RoznamchaEntry[];
+  onAddRoznamchaEntry?: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
 }
 
 export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
@@ -41,6 +45,9 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
   customers,
   bankAccount,
   companyProfile,
+  routes = [],
+  roznamcha = [],
+  onAddRoznamchaEntry,
 }) => {
   // State for selected booked order
   const [selectedOrderId, setSelectedOrderId] = useState<string>(orders[0]?.id || '');
@@ -274,6 +281,7 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
             <div className="flex flex-wrap gap-1.5">
               {[
                 { id: 'sales', label: 'Sales & Billing (28)' },
+                { id: 'summary', label: 'Route Summaries (Summary #1, #2...)' },
                 { id: 'inventory', label: 'Inventory & WH (24)' },
                 { id: 'ledger', label: 'Ledger & Roznamcha (26)' },
                 { id: 'hr', label: 'HR & Payroll (18)' },
@@ -281,7 +289,12 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
               ].map((cat) => (
                 <button
                   key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
+                  onClick={() => {
+                    setActiveCategory(cat.id);
+                    if (cat.id === 'summary') {
+                      setPresetCode('REC-SUM-01');
+                    }
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
                     activeCategory === cat.id
                       ? 'bg-amber-600 text-white shadow-xs'
@@ -301,7 +314,9 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                 value={presetCode}
                 onChange={(e) => {
                   setPresetCode(e.target.value);
-                  if (e.target.value.includes('TH')) {
+                  if (e.target.value === 'REC-SUM-01') {
+                    setActiveCategory('summary');
+                  } else if (e.target.value.includes('TH')) {
                     setPaperFormat('pos80');
                     setViewMode('thermal');
                   } else {
@@ -312,6 +327,7 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-500 cursor-pointer"
               >
                 <option value="INV-A4-01">Standard FBR A4 Sales Tax Invoice (INV-A4-01)</option>
+                <option value="REC-SUM-01">Route Delivery &amp; Recovery Summary Sheet (REC-SUM-01)</option>
                 <option value="INV-TH-02">80mm POS Route Van Thermal Slip (INV-TH-02)</option>
                 <option value="CHL-04">Triplicate Delivery Challan &amp; Signoff (CHL-04)</option>
                 <option value="GRN-301">Warehouse Goods Received Note (GRN-301)</option>
@@ -627,6 +643,17 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
 
           {/* Main Live Printable Canvas Wrapper */}
           <div className="w-full bg-slate-100 p-4 sm:p-6 rounded-2xl flex justify-center overflow-x-auto shadow-inner">
+            {presetCode === 'REC-SUM-01' || activeCategory === 'summary' ? (
+              <div className="w-full">
+                <RouteDeliverySummaryEngine
+                  orders={orders}
+                  customers={customers}
+                  routes={routes}
+                  roznamcha={roznamcha}
+                  onAddRoznamchaEntry={onAddRoznamchaEntry}
+                />
+              </div>
+            ) : (
             <div style={{ transform: `scale(${zoomScale})`, transformOrigin: 'top center' }}>
               {viewMode === 'a4' ? (
                 /* ======================= A4 TAX INVOICE CANVAS ======================= */
@@ -680,17 +707,20 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
 
                       {/* Right Statutory Title & Coordinates */}
                       <div className="flex flex-col items-end text-right mt-2 sm:mt-0">
-                        <span className="text-[16px] font-black text-amber-700 tracking-wide uppercase">
-                          SALES TAX INVOICE
+                        <span className="text-[16px] font-black text-slate-900 tracking-wide uppercase font-mono">
+                          BILL / {docNumber.toUpperCase().includes('BILL') || docNumber.toUpperCase().includes('INVOICE') ? docNumber.toUpperCase() : `INVOICE #${docNumber}`}
                         </span>
+                        <div className="text-xs font-bold text-amber-700">
+                          {selectedOrder?.route || 'Route'} • {selectedCustomer?.shopNumber ? `Shop #${selectedCustomer.shopNumber} ` : ''}({selectedOrder?.shopName || 'Shop'})
+                        </div>
                         {showUrduHeadings && (
-                          <span className="text-[13px] font-bold text-slate-600">
+                          <span className="text-[12px] font-bold text-slate-600">
                             فروخت ٹیکس انوائس
                           </span>
                         )}
                         <div className="mt-2 text-[11px] flex flex-col items-end font-mono">
                           <div>
-                            <span className="text-slate-500">Invoice #:</span>{' '}
+                            <span className="text-slate-500">Bill / Inv #:</span>{' '}
                             <span className="font-bold text-slate-900">{docNumber}</span>
                           </div>
                           <div>
@@ -700,15 +730,15 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                             </span>
                           </div>
                           <div>
-                            <span className="text-slate-500">Route Van:</span>{' '}
+                            <span className="text-slate-500">Route:</span>{' '}
                             <span className="font-semibold text-slate-900">
                               {selectedOrder?.route || 'Assigned Route'}
                             </span>
                           </div>
                           <div>
-                            <span className="text-slate-500">Order Booker:</span>{' '}
+                            <span className="text-slate-500">Sales Officer:</span>{' '}
                             <span className="font-semibold text-slate-900">
-                              Field Order Booker
+                              {selectedOrder?.bookerName || selectedOrder?.salesmanName || 'Field Order Booker'}
                             </span>
                           </div>
                         </div>
@@ -984,17 +1014,22 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                     <div className="text-[10px] text-gray-700">{depotLocation}</div>
                     <div className="text-[10px] text-gray-600">{taxIds}</div>
                     <div className="my-1.5 border-b border-black border-dashed"></div>
-                    <div className="font-black text-[12px] uppercase">VAN SALES RECEIPT</div>
-                    <div className="text-[10px]">
-                      {docNumber} • {formatDateTime(selectedOrder?.date || new Date().toISOString())}
+                    <div className="font-black text-[12px] uppercase">
+                      BILL / {docNumber.toUpperCase().includes('BILL') || docNumber.toUpperCase().includes('INVOICE') ? docNumber.toUpperCase() : `INVOICE #${docNumber}`}
+                    </div>
+                    <div className="text-[10px] font-bold">
+                      {selectedOrder?.route} • {selectedCustomer?.shopNumber ? `Shop #${selectedCustomer.shopNumber} ` : ''}({selectedOrder?.shopName})
+                    </div>
+                    <div className="text-[9px] text-gray-500">
+                      Date: {formatDateTime(selectedOrder?.date || new Date().toISOString())}
                     </div>
                   </div>
 
                   <div className="my-1.5 border-b border-black border-dashed"></div>
                   <div className="text-[10px]">
-                    <div>Cust: {selectedOrder?.shopName}</div>
+                    <div>Client: {selectedCustomer?.shopNumber ? `Shop #${selectedCustomer.shopNumber}: ` : ''}{selectedOrder?.shopName}</div>
                     <div>Route: {selectedOrder?.route}</div>
-                    <div>Van: Hilux #04 (Tariq M.)</div>
+                    <div>Booker: {selectedOrder?.bookerName || selectedOrder?.salesmanName || 'Field Sales Officer'}</div>
                   </div>
                   <div className="my-1.5 border-b border-black border-dashed"></div>
 
@@ -1075,6 +1110,7 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       </div>

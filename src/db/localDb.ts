@@ -11,6 +11,7 @@ import {
   CustomerNote,
   Order,
   RoznamchaEntry,
+  RouteDeliverySummary,
 } from '../types';
 
 export const ACTIVE_TENANT_ID = 'tenant_pk_swat_1042';
@@ -291,6 +292,31 @@ export async function removeCustomerFromRoute(
 
 export async function logZeroSaleCall(zeroSale: ZeroSaleCall): Promise<void> {
   await db.zero_sales.add(zeroSale);
+}
+
+/**
+ * Route Delivery & Recovery Summary (Summary #1, #2...) Persistence
+ */
+export async function getTenantRouteSummaries(): Promise<RouteDeliverySummary[]> {
+  try {
+    const list = await db.route_summaries.toArray();
+    return list.sort((a, b) => b.summaryNumber - a.summaryNumber);
+  } catch (err) {
+    console.warn('Failed to get route summaries:', err);
+    return [];
+  }
+}
+
+export async function saveRouteSummary(summary: RouteDeliverySummary): Promise<void> {
+  await db.route_summaries.put(summary);
+}
+
+export async function updateRouteSummary(summary: RouteDeliverySummary): Promise<void> {
+  await db.route_summaries.put(summary);
+}
+
+export async function deleteRouteSummary(summaryId: string): Promise<void> {
+  await db.route_summaries.delete(summaryId);
 }
 
 export { db, OmniSalesDB };

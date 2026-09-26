@@ -26,6 +26,13 @@ import {
 } from 'lucide-react';
 import { GRNDocket, GRNLineItem, Product } from '../../types';
 import { formatPKR, formatDateTime, formatDate } from '../../utils/calculations';
+import {
+  getNextSequenceNumber,
+  formatGrnId,
+  formatPoId,
+  formatGatePassId,
+  formatBatchId,
+} from '../../utils/sequenceNumbering';
 
 interface DesktopInventoryGRNProps {
   products: Product[];
@@ -69,12 +76,26 @@ export const DesktopInventoryGRN: React.FC<DesktopInventoryGRNProps> = ({
   const [isFastIntakeOpen, setIsFastIntakeOpen] = useState(false);
   const [intakeProductId, setIntakeProductId] = useState<string>(products[0]?.id || '');
   const [intakeVendor, setIntakeVendor] = useState(products[0]?.brand || 'PrimeLink Distribution');
-  const [intakePoNo, setIntakePoNo] = useState(`PO-2026-${Math.floor(1000 + Math.random() * 9000)}`);
-  const [intakeGrnNo, setIntakeGrnNo] = useState(`GRN-SWT-${Math.floor(100 + Math.random() * 900)}`);
+  const [intakePoNo, setIntakePoNo] = useState('PO #1');
+  const [intakeGrnNo, setIntakeGrnNo] = useState('GRN #1');
   const [intakeCartons, setIntakeCartons] = useState(100);
-  const [intakeBatchLot, setIntakeBatchLot] = useState('LOT-2026-ENG-901');
+  const [intakeBatchLot, setIntakeBatchLot] = useState('Batch #1');
   const [intakeExpiryDate, setIntakeExpiryDate] = useState('2027-12-31');
   const [intakeTargetBay, setIntakeTargetBay] = useState('Bay A • Dry Goods Rack 04');
+
+  const openFastIntakeModal = () => {
+    const nextGrnNum = getNextSequenceNumber(grnDockets, (d) => d.grnNo || d.id);
+    const nextPoNum = getNextSequenceNumber(grnDockets, (d) => d.poNo);
+    const nextBatchNum = getNextSequenceNumber(grnDockets, (d) => d.items?.[0]?.batchLot || d.batchNumber);
+    setIntakeGrnNo(formatGrnId(nextGrnNum));
+    setIntakePoNo(formatPoId(nextPoNum));
+    setIntakeBatchLot(formatBatchId(nextBatchNum));
+    if (products.length > 0 && !intakeProductId) {
+      setIntakeProductId(products[0].id);
+      setIntakeVendor(products[0].brand || 'PrimeLink Distribution');
+    }
+    setIsFastIntakeOpen(true);
+  };
 
   // Filtered dockets in left master panel
   const filteredDockets = useMemo(() => {
@@ -160,14 +181,17 @@ export const DesktopInventoryGRN: React.FC<DesktopInventoryGRNProps> = ({
     const prod = products.find((p) => p.id === intakeProductId) || products[0];
     if (!prod) return;
 
+    const nextGatePassNum = getNextSequenceNumber(grnDockets, (d) => d.gatePassNo);
+    const nextChallanNum = getNextSequenceNumber(grnDockets, (d) => d.challanNo);
+
     const newDocket: Omit<GRNDocket, 'id'> = {
       grnNo: intakeGrnNo.trim(),
       poNo: intakePoNo.trim(),
       vendorId: `V-${prod.brand.slice(0, 3).toUpperCase()}`,
       vendorName: intakeVendor.trim(),
       date: new Date().toISOString(),
-      challanNo: `CH-${Date.now().toString().slice(-4)}`,
-      gatePassNo: `GP-${Math.floor(1000 + Math.random() * 9000)}-SWT`,
+      challanNo: `Challan #${nextChallanNum}`,
+      gatePassNo: formatGatePassId(nextGatePassNum),
       depotLocation: 'Mingora Central WH',
       receivingInspector: 'S. Mansoor (QC-II)',
       truckRegNo: 'SWT-2026-X',
@@ -277,7 +301,7 @@ export const DesktopInventoryGRN: React.FC<DesktopInventoryGRNProps> = ({
             <span>Sync Scanners</span>
           </button>
           <button
-            onClick={() => setIsFastIntakeOpen(true)}
+            onClick={openFastIntakeModal}
             className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />

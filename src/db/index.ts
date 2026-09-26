@@ -18,6 +18,7 @@ import {
   CustomerNote,
   BankAccount,
   CompanyProfile,
+  RouteDeliverySummary,
 } from '../types';
 
 export class OmniSalesDB extends Dexie {
@@ -38,10 +39,11 @@ export class OmniSalesDB extends Dexie {
   zero_sales!: Table<ZeroSaleCall, number>;
   customer_notes!: Table<CustomerNote, number>;
   bank_accounts!: Table<BankAccount, string>;
+  route_summaries!: Table<RouteDeliverySummary, string>;
 
   constructor() {
     super('OmniSalesERP_DB');
-    this.version(7).stores({
+    this.version(9).stores({
       products: 'id, sku, brand, name, category',
       customers: 'id, tenant_id, shop_name, owner_name, route_id, phone, credit_limit, current_balance, status, name, shopName, route',
       customer_notes: '++id, tenant_id, customer_id, note_date, text',
@@ -51,7 +53,7 @@ export class OmniSalesDB extends Dexie {
       grn: 'id, grnNo, poNo, vendorName, status, date',
       staff: 'id, empCode, name, routeAssigned, status',
       attendance: 'id, staffId, empCode, date, status',
-      employees: 'id, tenant_id, name, role, assigned_route, status',
+      employees: 'id, tenant_id, name, phone, role, assigned_route, status',
       staff_attendance: '++id, tenant_id, employee_id, date, status, allowance',
       salary_advances: '++id, tenant_id, employee_id, date, amount, is_settled',
       payroll_records: '++id, tenant_id, month, year, employee_id, net_salary, status',
@@ -59,6 +61,7 @@ export class OmniSalesDB extends Dexie {
       route_stops: '++id, tenant_id, route_id, customer_id, stop_sequence',
       zero_sales: '++id, tenant_id, route_id, customer_id, date, reason',
       bank_accounts: 'id, bankName, accountNumber, iban, raastId, isPrimary',
+      route_summaries: 'id, summaryNumber, summaryCode, routeId, routeName, dispatchDate, status',
     });
   }
 }
@@ -101,7 +104,74 @@ export const INITIAL_OPENING_CASH = 0; // Rs. 0 base opening cash
 export const INITIAL_GRN: GRNDocket[] = [];
 export const INITIAL_STAFF: StaffMember[] = [];
 export const INITIAL_ATTENDANCE: AttendanceRecord[] = [];
-export const INITIAL_EMPLOYEES: Employee[] = [];
+export const INITIAL_EMPLOYEES: Employee[] = [
+  {
+    id: 'EMP-001',
+    tenant_id: 'tenant_pk_swat_1042',
+    name: 'Haji Noor Mohammad (Managing Director)',
+    phone: '0300-9821450',
+    role: 'Owner / Admin',
+    assigned_route: 'Headquarters / All Routes',
+    base_salary: 100000,
+    daily_allowance_rate: 500,
+    commission_rate: 0,
+    status: 'Active',
+    pin: '1234',
+  },
+  {
+    id: 'EMP-101',
+    tenant_id: 'tenant_pk_swat_1042',
+    name: 'Bilal Swati (Order Booker)',
+    phone: '0300-1122334',
+    role: 'Order Booker / Salesman',
+    assigned_route: 'Swat Valley - Route A',
+    base_salary: 45000,
+    daily_allowance_rate: 300,
+    commission_rate: 1.5,
+    status: 'Active',
+    pin: '1122',
+  },
+  {
+    id: 'EMP-201',
+    tenant_id: 'tenant_pk_swat_1042',
+    name: 'Tariq Driver (Dispatch Van 04)',
+    phone: '0300-5566778',
+    role: 'Delivery Driver',
+    assigned_route: 'Mingora Central Sector',
+    van_assigned: 'Suzuki Bolan (SWT-8821)',
+    base_salary: 38000,
+    daily_allowance_rate: 250,
+    commission_rate: 0,
+    status: 'Active',
+    pin: '3344',
+  },
+  {
+    id: 'EMP-301',
+    tenant_id: 'tenant_pk_swat_1042',
+    name: 'Rashid Jan (Depot Supervisor)',
+    phone: '0300-7788990',
+    role: 'Warehouse Supervisor',
+    assigned_route: 'Depot & Central Warehouse',
+    base_salary: 42000,
+    daily_allowance_rate: 200,
+    commission_rate: 0,
+    status: 'Active',
+    pin: '5566',
+  },
+  {
+    id: 'EMP-401',
+    tenant_id: 'tenant_pk_swat_1042',
+    name: 'Kamran Cashier (Head Cashier)',
+    phone: '0300-3344556',
+    role: 'Accountant',
+    assigned_route: 'Finance & Roznamcha Desk',
+    base_salary: 50000,
+    daily_allowance_rate: 200,
+    commission_rate: 0,
+    status: 'Active',
+    pin: '7788',
+  },
+];
 export const INITIAL_SALARY_ADVANCES: SalaryAdvance[] = [];
 export const INITIAL_ROUTES: SalesRoute[] = [];
 export const INITIAL_ROUTE_STOPS: RouteStop[] = [];
@@ -115,11 +185,24 @@ export const SAMPLE_PRODUCTS: Product[] = [];
 export const SAMPLE_CUSTOMERS: Customer[] = [];
 
 /**
- * seedDatabaseIfEmpty: Never auto-seeds demo data on startup.
- * The catalog remains exactly as the user configured.
+ * seedInitialEmployeesIfEmpty: Seeds default staff into db.employees if table is empty
+ */
+export async function seedInitialEmployeesIfEmpty(): Promise<void> {
+  try {
+    const count = await db.employees.count();
+    if (count === 0) {
+      await db.employees.bulkPut(INITIAL_EMPLOYEES);
+    }
+  } catch (err) {
+    console.warn('Failed to seed initial employees in Dexie:', err);
+  }
+}
+
+/**
+ * seedDatabaseIfEmpty: Seeds base staff credentials if none exist
  */
 export async function seedDatabaseIfEmpty() {
-  // No automatic dummy data injection
+  await seedInitialEmployeesIfEmpty();
 }
 
 /**
@@ -144,6 +227,7 @@ export async function clearAllDatabaseData(): Promise<void> {
     db.route_stops.clear(),
     db.zero_sales.clear(),
     db.bank_accounts.clear(),
+    db.route_summaries.clear(),
   ]);
   localStorage.removeItem('omnisales_opening_cash');
   localStorage.setItem('omnisales_clean_slate_v2', 'true');

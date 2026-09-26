@@ -41,6 +41,11 @@ import {
   adjustCustomerCreditLimit,
   ACTIVE_TENANT_ID,
 } from '../../db/localDb';
+import {
+  getNextSequenceNumber,
+  formatShopId,
+  extractSequenceNumber,
+} from '../../utils/sequenceNumbering';
 
 interface DesktopCustomer360Props {
   customers: Customer[];
@@ -94,6 +99,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Form State
+  const [formShopNumber, setFormShopNumber] = useState<number>(1);
   const [formShopName, setFormShopName] = useState('');
   const [formName, setFormName] = useState('');
   const [formRoute, setFormRoute] = useState('Mingora Central');
@@ -325,29 +331,41 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
     const custOrders = orders
       .filter((o) => o.customerId === selectedCustomer.id)
-      .map((o) => ({
-        id: o.id,
-        date: o.date,
-        type: 'invoice' as const,
-        ref: o.orderNo,
-        description: `Delivered: ${o.totalCartons}c + ${o.totalPieces}p (${o.paymentType})`,
-        debit: o.netBill,
-        credit: o.cashPaid,
-        orderObj: o,
-      }));
+      .map((o) => {
+        const rawNum = extractSequenceNumber(o.orderNo) || o.invoiceNumber || 1;
+        const cleanBill = `Bill #${rawNum}`;
+        return {
+          id: o.id,
+          date: o.date,
+          type: 'invoice' as const,
+          ref: cleanBill,
+          description: `Debit: ${cleanBill} (Delivered ${o.totalCartons}c + ${o.totalPieces}p • ${o.paymentType})`,
+          debit: o.netBill,
+          credit: o.cashPaid,
+          orderObj: o,
+        };
+      });
 
     const custRecoveries = roznamcha
       .filter((r) => r.customerId === selectedCustomer.id && r.type === 'cash_in')
-      .map((r) => ({
-        id: r.id,
-        date: r.date,
-        type: 'recovery' as const,
-        ref: r.slipNo || r.entryNo,
-        description: `Cash Recovery Receipt: ${r.narration}`,
-        debit: 0,
-        credit: r.amount,
-        orderObj: null,
-      }));
+      .map((r) => {
+        const rawSlip = r.slipNo || r.entryNo || 'RCP';
+        const cleanRef = rawSlip.includes('Bill') || rawSlip.includes('Invoice')
+          ? `Payment against ${rawSlip.replace('Invoice', 'Bill')}`
+          : `Payment against Bill • ${rawSlip}`;
+        return {
+          id: r.id,
+          date: r.date,
+          type: 'recovery' as const,
+          ref: cleanRef,
+          description: r.narration?.includes('Payment against')
+            ? r.narration
+            : `Payment against Bill — ${r.narration}`,
+          debit: 0,
+          credit: r.amount,
+          orderObj: null,
+        };
+      });
 
     // Chronological sort ascending to compute running balance
     const combined = [...custOrders, ...custRecoveries].sort(
@@ -504,6 +522,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
     const custPayload: Omit<Customer, 'id' | 'currentBalance'> = {
       tenant_id: ACTIVE_TENANT_ID,
+      shopNumber: Number(formShopNumber) || 1,
       name: formName.trim(),
       owner_name: formName.trim(),
       shopName: formShopName.trim(),
@@ -602,6 +621,8 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
   const openAddModal = () => {
     setEditingCustomer(null);
+    const nextShopNum = getNextSequenceNumber(customers, (c) => c.shopNumber || c.id);
+    setFormShopNumber(nextShopNum);
     setFormShopName('');
     setFormName('');
     setFormRoute(routes.filter((r) => r !== 'All')[0] || 'Main Bazaar Route');
@@ -624,6 +645,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
   const openEditModal = (c: Customer) => {
     setEditingCustomer(c);
+    setFormShopNumber(c.shopNumber || extractSequenceNumber(c.id) || 1);
     setFormShopName(c.shopName);
     setFormName(c.name);
     setFormRoute(c.route);
@@ -1059,7 +1081,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((c) => {
+                  filteredCustomers.map((c, idx) => {
                     const isSelected = selectedCustomer?.id === c.id;
                     const isChecked = selectedIds.has(c.id);
                     const aging = getCustomerAging(c);
@@ -1099,11 +1121,16 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                         {/* Account & Entity */}
                         <td className="p-3 whitespace-nowrap">
-                          <div className="font-bold text-slate-900">{c.shopName}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-mono font-bold text-[11px] shadow-2xs">
+                              Shop #{c.shopNumber || extractSequenceNumber(c.id) || (idx + 1)}
+                            </span>
+                            <span className="font-bold text-slate-900">{c.shopName}</span>
+                          </div>
                           <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                             <span className="font-mono text-amber-800 font-semibold">{c.id}</span>
                             <span>•</span>
-                            <span>{c.name}</span>
+                            <span>Proprietor: {c.name}</span>
                           </div>
                         </td>
 
@@ -1790,6 +1817,30 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
             </div>
 
             <form onSubmit={handleSaveCustomer} className="space-y-4 text-xs">
+              {/* Sequential Shop Number */}
+              <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200">
+                <label className="block font-bold text-amber-900 uppercase mb-1">
+                  Shop Sequence Number (Auto-Incremented) *
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="px-3.5 py-2 bg-amber-600 text-white font-black rounded-xl text-sm font-mono shadow-xs">
+                    Shop #
+                  </span>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={formShopNumber}
+                    onChange={(e) => setFormShopNumber(parseInt(e.target.value, 10) || 1)}
+                    placeholder="1"
+                    className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <p className="text-[10px] text-amber-800 mt-1 font-medium">
+                  Universal Sequential Number (Next = Max Existing + 1). Automatically pre-filled, editable if needed.
+                </p>
+              </div>
+
               {/* Basic Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

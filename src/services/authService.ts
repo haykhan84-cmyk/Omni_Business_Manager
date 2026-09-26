@@ -1,19 +1,22 @@
-import { UserAccount, UserRole, UserSession } from '../types';
+import { UserAccount, UserRole, UserSession, Employee } from '../types';
 import { ACTIVE_TENANT_ID } from '../db/localDb';
+import { db, INITIAL_EMPLOYEES, seedInitialEmployeesIfEmpty } from '../db';
+import { queryEmployeeFromSupabase } from '../db/supabase';
 
 export const DEFAULT_USERS: UserAccount[] = [
   {
-    id: 'user-emp-001',
+    id: 'EMP-001',
     employeeId: 'EMP-001',
     name: 'Haji Noor Mohammad (Managing Director)',
     phone: '0300-9821450',
     pin: '1234',
     role: 'ADMIN',
     roleTitle: 'Owner & Managing Director',
+    assignedRoute: 'Headquarters / All Routes',
     tenant_id: ACTIVE_TENANT_ID,
   },
   {
-    id: 'user-emp-101',
+    id: 'EMP-101',
     employeeId: 'EMP-101',
     name: 'Bilal Swati (Order Booker)',
     phone: '0300-1122334',
@@ -24,76 +27,103 @@ export const DEFAULT_USERS: UserAccount[] = [
     tenant_id: ACTIVE_TENANT_ID,
   },
   {
-    id: 'user-emp-201',
+    id: 'EMP-201',
     employeeId: 'EMP-201',
     name: 'Tariq Driver (Dispatch Van 04)',
     phone: '0300-5566778',
     pin: '3344',
     role: 'DELIVERY_DRIVER',
     roleTitle: 'Van Delivery Driver',
+    assignedRoute: 'Mingora Central Sector',
     vanAssigned: 'Suzuki Bolan (SWT-8821)',
     tenant_id: ACTIVE_TENANT_ID,
   },
   {
-    id: 'user-emp-301',
+    id: 'EMP-301',
     employeeId: 'EMP-301',
     name: 'Rashid Jan (Depot Supervisor)',
     phone: '0300-7788990',
     pin: '5566',
     role: 'WAREHOUSE_SUPERVISOR',
     roleTitle: 'Depot & GRN Supervisor',
+    assignedRoute: 'Depot & Central Warehouse',
     tenant_id: ACTIVE_TENANT_ID,
   },
   {
-    id: 'user-emp-401',
+    id: 'EMP-401',
     employeeId: 'EMP-401',
     name: 'Kamran Cashier (Head Cashier)',
     phone: '0300-3344556',
     pin: '7788',
     role: 'ACCOUNTANT',
     roleTitle: 'Head Cashier & Accountant',
+    assignedRoute: 'Finance & Roznamcha Desk',
     tenant_id: ACTIVE_TENANT_ID,
   },
 ];
 
 const SESSION_STORAGE_KEY = 'omnisales_auth_session';
-const USERS_STORAGE_KEY = 'omnisales_custom_users';
 
 /**
  * Normalizes phone numbers for matching (removes hyphens, spaces, leading 0 or +92)
  */
-function normalizePhone(phone: string): string {
+export function normalizePhone(phone: string): string {
+  if (!phone) return '';
   return phone.replace(/[^0-9]/g, '');
 }
 
 /**
- * Returns all available users (default pre-seeded + any custom created users)
+ * Maps human-readable Employee designation to system RBAC UserRole
  */
-export function getAllUsers(): UserAccount[] {
-  try {
-    const raw = localStorage.getItem(USERS_STORAGE_KEY);
-    if (!raw) return DEFAULT_USERS;
-    const custom = JSON.parse(raw);
-    if (!Array.isArray(custom)) return DEFAULT_USERS;
-
-    // Merge custom users with default users by id or employeeId
-    const mergedMap = new Map<string, UserAccount>();
-    DEFAULT_USERS.forEach((u) => mergedMap.set(u.employeeId.toUpperCase(), u));
-    custom.forEach((u) => mergedMap.set(u.employeeId.toUpperCase(), u));
-    return Array.from(mergedMap.values());
-  } catch {
-    return DEFAULT_USERS;
+export function mapEmployeeRoleToUserRole(role: string): UserRole {
+  if (!role) return 'ORDER_BOOKER';
+  const r = role.toLowerCase();
+  if (r.includes('admin') || r.includes('owner') || r.includes('director') || r.includes('manager')) {
+    return 'ADMIN';
   }
+  if (r.includes('booker') || r.includes('sales') || r.includes('order')) {
+    return 'ORDER_BOOKER';
+  }
+  if (r.includes('driver') || r.includes('delivery') || r.includes('van helper') || r.includes('loader') || r.includes('mazdoor')) {
+    return 'DELIVERY_DRIVER';
+  }
+  if (r.includes('warehouse') || r.includes('depot') || r.includes('grn') || r.includes('supervisor')) {
+    return 'WAREHOUSE_SUPERVISOR';
+  }
+  if (r.includes('cashier') || r.includes('accountant') || r.includes('recovery')) {
+    return 'ACCOUNTANT';
+  }
+  return 'ORDER_BOOKER';
 }
 
 /**
- * Authenticates user credentials (offline-first from local Dexie / storage)
+ * Converts an Employee record to an authenticated UserAccount
  */
-export function authenticateUser(
+export function employeeToUserAccount(emp: Employee): UserAccount {
+  const role = mapEmployeeRoleToUserRole(emp.role);
+  return {
+    id: emp.id,
+    employeeId: emp.id,
+    name: emp.name,
+    phone: emp.phone,
+    pin: emp.pin || '1234',
+    role,
+    roleTitle: emp.role,
+    assignedRoute: emp.assigned_route || 'General Market Beat',
+    vanAssigned: emp.van_assigned,
+    tenant_id: emp.tenant_id || ACTIVE_TENANT_ID,
+  };
+}
+
+/**
+ * Authenticates user credentials against the real database (db.employees in Dexie & Supabase)
+ * Queries by ID OR Phone + 4-digit PIN
+ */
+export async function authenticateUser(
   identifier: string,
   pin: string,
   rememberMe: boolean = true
-): { success: boolean; user?: UserAccount; error?: string } {
+): Promise<{ success: boolean; user?: UserAccount; error?: string }> {
   const cleanId = identifier.trim();
   const cleanPin = pin.trim();
 
@@ -101,41 +131,113 @@ export function authenticateUser(
     return { success: false, error: 'Please enter your Employee ID or Mobile Number.' };
   }
   if (!cleanPin) {
-    return { success: false, error: 'Please enter your 4-digit PIN or password.' };
+    return { success: false, error: 'Please enter your 4-digit Security PIN.' };
   }
 
-  const users = getAllUsers();
-  const normId = cleanId.toLowerCase();
-  const normInputPhone = normalizePhone(cleanId);
+  // 1. Ensure initial staff exist in local Dexie if empty
+  await seedInitialEmployeesIfEmpty();
 
-  // Match by Employee ID, Phone, Name snippet, or quick role alias (admin, sales, driver, warehouse, cashier)
-  const matchedUser = users.find((u) => {
-    if (u.employeeId.toLowerCase() === normId) return true;
-    if (u.phone && normalizePhone(u.phone).includes(normInputPhone) && normInputPhone.length >= 7) return true;
-    if (normId === 'admin' && u.role === 'ADMIN') return true;
-    if (normId === 'sales' && u.role === 'ORDER_BOOKER') return true;
-    if (normId === 'driver' && u.role === 'DELIVERY_DRIVER') return true;
-    if (normId === 'warehouse' && u.role === 'WAREHOUSE_SUPERVISOR') return true;
-    if (normId === 'cashier' && u.role === 'ACCOUNTANT') return true;
+  // 2. Fetch employees from local Dexie database
+  let allEmployees: Employee[] = [];
+  try {
+    allEmployees = await db.employees.toArray();
+  } catch (err) {
+    console.warn('Could not read db.employees from Dexie:', err);
+  }
+
+  const normInput = cleanId.toLowerCase();
+  const normInputPhone = normalizePhone(cleanId);
+  const cleanDigits = normInputPhone.slice(-7); // Last 7 digits for phone matching
+
+  // Match in local Dexie database by id OR phone
+  let matchedEmp = allEmployees.find((e) => {
+    // Exact or case-insensitive ID match (e.g. EMP-101, emp-101, 101)
+    if (e.id.toLowerCase() === normInput) return true;
+    if (e.id.toLowerCase().replace(/[^a-z0-9]/g, '') === normInput.replace(/[^a-z0-9]/g, '')) return true;
+
+    // Phone match
+    if (e.phone) {
+      const p = normalizePhone(e.phone);
+      if (p && cleanDigits.length >= 7 && p.includes(cleanDigits)) return true;
+    }
+
+    // Quick role aliases for testing
+    if (normInput === 'admin' && (e.role.includes('Admin') || e.role.includes('Owner'))) return true;
+    if (normInput === 'sales' && e.role.includes('Order Booker')) return true;
+    if (normInput === 'driver' && e.role.includes('Driver')) return true;
+    if (normInput === 'warehouse' && (e.role.includes('Warehouse') || e.role.includes('Supervisor'))) return true;
+    if (normInput === 'cashier' && (e.role.includes('Cashier') || e.role.includes('Accountant'))) return true;
+
     return false;
   });
 
-  if (!matchedUser) {
+  // 3. If not found locally in Dexie, query remote Supabase
+  if (!matchedEmp) {
+    try {
+      const remoteEmp = await queryEmployeeFromSupabase(cleanId);
+      if (remoteEmp) {
+        matchedEmp = remoteEmp;
+        // Cache to Dexie for offline login next time
+        await db.employees.put(remoteEmp);
+      }
+    } catch (err) {
+      console.warn('Supabase employee lookup notice:', err);
+    }
+  }
+
+  // 4. Fallback check against DEFAULT_USERS if not in employees table
+  if (!matchedEmp) {
+    const defaultUser = DEFAULT_USERS.find((u) => {
+      if (u.employeeId.toLowerCase() === normInput) return true;
+      if (u.phone && cleanDigits.length >= 7 && normalizePhone(u.phone).includes(cleanDigits)) return true;
+      if (normInput === 'admin' && u.role === 'ADMIN') return true;
+      if (normInput === 'sales' && u.role === 'ORDER_BOOKER') return true;
+      if (normInput === 'driver' && u.role === 'DELIVERY_DRIVER') return true;
+      if (normInput === 'warehouse' && u.role === 'WAREHOUSE_SUPERVISOR') return true;
+      if (normInput === 'cashier' && u.role === 'ACCOUNTANT') return true;
+      return false;
+    });
+
+    if (defaultUser) {
+      if (defaultUser.pin !== cleanPin) {
+        return {
+          success: false,
+          error: `Invalid PIN for ${defaultUser.name}. Please enter your 4-digit PIN.`,
+        };
+      }
+      const session: UserSession = {
+        user: defaultUser,
+        loginTime: new Date().toISOString(),
+        rememberMe,
+      };
+      try {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+      } catch (e) {
+        console.warn('Failed to store session:', e);
+      }
+      return { success: true, user: defaultUser };
+    }
+
     return {
       success: false,
-      error: `Employee record not found for "${cleanId}". Check ID or tap a Demo user below.`,
+      error: `Employee record not found for "${cleanId}". Please check Employee ID or Mobile Number.`,
     };
   }
 
-  if (matchedUser.pin !== cleanPin) {
+  // 5. Check PIN
+  const expectedPin = (matchedEmp.pin || '1234').trim();
+  if (expectedPin !== cleanPin) {
     return {
       success: false,
-      error: 'Invalid 4-digit PIN. Try default PIN (1234 for Admin, 1122 for Booker, 3344 for Driver).',
+      error: `Invalid Security PIN for ${matchedEmp.name}. Please enter your 4-digit PIN.`,
     };
   }
+
+  // 6. Build authenticated user and link their real name & assigned route!
+  const userAccount = employeeToUserAccount(matchedEmp);
 
   const session: UserSession = {
-    user: matchedUser,
+    user: userAccount,
     loginTime: new Date().toISOString(),
     rememberMe,
   };
@@ -146,7 +248,7 @@ export function authenticateUser(
     console.warn('Failed to save session to localStorage:', e);
   }
 
-  return { success: true, user: matchedUser };
+  return { success: true, user: userAccount };
 }
 
 /**
@@ -173,6 +275,22 @@ export function clearStoredSession(): void {
   } catch (e) {
     console.warn('Failed to clear session:', e);
   }
+}
+
+/**
+ * Returns all active users from db.employees for the login screen quick selector
+ */
+export async function getLiveUsersForQuickLogin(): Promise<UserAccount[]> {
+  try {
+    await seedInitialEmployeesIfEmpty();
+    const emps = await db.employees.toArray();
+    if (emps.length > 0) {
+      return emps.map(employeeToUserAccount);
+    }
+  } catch (err) {
+    console.warn('Could not load live employees:', err);
+  }
+  return DEFAULT_USERS;
 }
 
 /**

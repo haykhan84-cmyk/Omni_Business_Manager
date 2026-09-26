@@ -362,6 +362,9 @@ export default function App() {
     // If cash was collected on the spot, automatically log a Roznamcha Cash In entry!
     let rozEntry: RoznamchaEntry | null = null;
     if (cashCollected > 0) {
+      const recordedIdentity = currentUser
+        ? `${currentUser.name} (${currentUser.employeeId || currentUser.id})`
+        : order.bookerName || 'Order Booker';
       rozEntry = {
         id: `roz-${Date.now()}`,
         entryNo: `RCP-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -372,8 +375,8 @@ export default function App() {
         customerId: order.customerId,
         customerName: order.shopName,
         slipNo: order.orderNo,
-        narration: `Spot order partial/full cash receipt (${order.orderNo})`,
-        recordedBy: 'Tariq Khan (OB-04)',
+        narration: `Payment against ${order.orderNo}${order.shopName ? ` (${order.shopName})` : ''}`,
+        recordedBy: recordedIdentity,
         synced: isOnline,
       };
       await db.roznamcha.add(rozEntry);

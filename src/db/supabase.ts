@@ -848,7 +848,7 @@ export async function syncBidirectional(): Promise<{
  */
 export async function syncEmployeeToSupabase(emp: Employee): Promise<boolean> {
   try {
-    const payload = {
+    const payload: any = {
       id: emp.id,
       tenant_id: emp.tenant_id || DEFAULT_TENANT_ID,
       name: emp.name,
@@ -863,10 +863,21 @@ export async function syncEmployeeToSupabase(emp: Employee): Promise<boolean> {
       commission_rate: emp.commission_rate,
       status: emp.status,
       imei: emp.imei || null,
+      pin: emp.pin || '1234',
       updated_at: new Date().toISOString(),
     };
     const { error } = await supabase.from('employees').upsert(payload, { onConflict: 'id' });
     if (error) {
+      // If remote table lacks 'pin' column, retry without pin column
+      if (error.message && error.message.toLowerCase().includes('pin')) {
+        const { pin, ...payloadWithoutPin } = payload;
+        const retry = await supabase.from('employees').upsert(payloadWithoutPin, { onConflict: 'id' });
+        if (retry.error) {
+          console.warn('[Supabase Employee Sync] Retry failed:', retry.error.message);
+          return false;
+        }
+        return true;
+      }
       console.warn(`[Supabase Employee Sync] Warning:`, error.message);
       return false;
     }
@@ -874,6 +885,80 @@ export async function syncEmployeeToSupabase(emp: Employee): Promise<boolean> {
   } catch (err: any) {
     console.warn(`[Supabase Employee Sync] Network notice:`, err?.message || err);
     return false;
+  }
+}
+
+/**
+ * Queries Supabase 'employees' table by ID or phone number
+ */
+export async function queryEmployeeFromSupabase(identifier: string): Promise<Employee | null> {
+  try {
+    const cleanId = identifier.trim();
+    if (!cleanId) return null;
+    const cleanDigits = cleanId.replace(/[^0-9]/g, '');
+
+    // 1. Query by exact ID or case-insensitive match
+    const { data: byId, error: errId } = await supabase
+      .from('employees')
+      .select('*')
+      .ilike('id', cleanId)
+      .limit(1);
+
+    if (!errId && byId && byId.length > 0) {
+      const e = byId[0];
+      return {
+        id: e.id,
+        tenant_id: e.tenant_id || DEFAULT_TENANT_ID,
+        name: e.name,
+        father_name: e.father_name || undefined,
+        phone: e.phone,
+        cnic_number: e.cnic_number || undefined,
+        role: e.role,
+        assigned_route: e.assigned_route || 'General Route',
+        van_assigned: e.van_assigned || undefined,
+        base_salary: Number(e.base_salary) || 40000,
+        daily_allowance_rate: Number(e.daily_allowance_rate) || 200,
+        commission_rate: Number(e.commission_rate) || 0,
+        status: e.status || 'Active',
+        imei: e.imei || undefined,
+        pin: e.pin || '1234',
+      };
+    }
+
+    // 2. Query by phone if digits are available
+    if (cleanDigits.length >= 7) {
+      const { data: byPhone, error: errPhone } = await supabase
+        .from('employees')
+        .select('*')
+        .ilike('phone', `%${cleanDigits.slice(-7)}%`)
+        .limit(1);
+
+      if (!errPhone && byPhone && byPhone.length > 0) {
+        const e = byPhone[0];
+        return {
+          id: e.id,
+          tenant_id: e.tenant_id || DEFAULT_TENANT_ID,
+          name: e.name,
+          father_name: e.father_name || undefined,
+          phone: e.phone,
+          cnic_number: e.cnic_number || undefined,
+          role: e.role,
+          assigned_route: e.assigned_route || 'General Route',
+          van_assigned: e.van_assigned || undefined,
+          base_salary: Number(e.base_salary) || 40000,
+          daily_allowance_rate: Number(e.daily_allowance_rate) || 200,
+          commission_rate: Number(e.commission_rate) || 0,
+          status: e.status || 'Active',
+          imei: e.imei || undefined,
+          pin: e.pin || '1234',
+        };
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('[Supabase queryEmployeeFromSupabase] Query notice:', err);
+    return null;
   }
 }
 

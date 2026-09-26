@@ -60,11 +60,11 @@ export function formatRate(val: number): string {
 }
 
 /**
- * Format currency into readable PKR format (e.g. Rs. 1,450,200)
+ * Format currency cleanly without bulky "Rs." prefix (e.g. 1,450,200)
  */
 export function formatPKR(val: number): string {
-  if (val === undefined || val === null || isNaN(val)) return 'Rs. 0';
-  return 'Rs. ' + Math.round(val).toLocaleString('en-PK');
+  if (val === undefined || val === null || isNaN(val)) return '0';
+  return Math.round(val).toLocaleString('en-PK');
 }
 
 /**

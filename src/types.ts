@@ -28,6 +28,7 @@ export interface CompanyProfile {
 export interface Product {
   id: string;
   sku: string;
+  skuNumber?: number; // SKU #1, SKU #2...
   name: string;
   brand: string;
   category: string;
@@ -54,6 +55,7 @@ export type TaxStatus = 'Filer' | 'Non-Filer' | 'Unregistered';
 export interface Customer {
   id: string;
   tenant_id?: string;
+  shopNumber?: number; // Shop #1, Shop #2...
   name: string; // Owner / Contact Name
   owner_name?: string;
   shopName: string; // Outlet / Shop Name
@@ -111,6 +113,7 @@ export interface OrderItem {
 export interface Order {
   id: string;
   orderNo: string;
+  invoiceNumber?: number; // Invoice #1, Invoice #2...
   customerId: string;
   customerName: string;
   shopName: string;
@@ -129,6 +132,9 @@ export interface Order {
   synced: boolean;
   notes?: string;
   status: 'booked' | 'dispatched' | 'delivered';
+  bookerId?: string;
+  bookerName?: string;
+  salesmanName?: string;
 }
 
 export type RoznamchaCategory =
@@ -193,7 +199,9 @@ export interface GRNLineItem {
 export interface GRNDocket {
   id: string;
   grnNo: string;
+  grnNumber?: number; // GRN #1, GRN #2...
   poNo: string;
+  poNumber?: number; // PO #1, PO #2...
   vendorId: string;
   vendorName: string;
   date: string;
@@ -223,11 +231,14 @@ export type EmployeeRole =
   | 'Van Helper / Loader (Mazdoor)'
   | 'Recovery Officer'
   | 'Cashier'
-  | 'Accountant';
+  | 'Accountant'
+  | 'Owner / Admin'
+  | 'Warehouse Supervisor';
 
 export interface Employee {
   id: string;
   tenant_id: string;
+  employeeNumber?: number; // Employee #1, Employee #2...
   name: string;
   father_name?: string;
   phone: string;
@@ -240,6 +251,7 @@ export interface Employee {
   commission_rate: number;
   status: 'Active' | 'On Leave' | 'Resigned' | 'Inactive';
   imei?: string;
+  pin?: string;
 }
 
 export interface StaffAttendance {
@@ -299,6 +311,7 @@ export interface SalesRoute {
   tenant_id: string;
   route_code: string;
   route_name: string;
+  routeNumber?: number; // Route #1, Route #2...
   assigned_booker_id: string;
   assigned_booker_name?: string;
   assigned_driver_id?: string;
@@ -350,6 +363,7 @@ export interface RouteLoadingSheetItem {
 export interface RouteLoadingSheet {
   id: string;
   gatePassNo: string;
+  gatePassNumber?: number; // Gate Pass #1, Gate Pass #2...
   routeId: string;
   routeName: string;
   routeCode: string;
@@ -362,8 +376,50 @@ export interface RouteLoadingSheet {
   totalCartons: number;
   totalPieces: number;
   totalAmount: number;
+  orders?: Order[];
   status: 'Draft' | 'Approved' | 'Dispatched';
   dispatchedAt?: string;
+  notes?: string;
+}
+
+export interface RouteSummaryShopRow {
+  stopSequence: number;
+  customerId: string;
+  shopNumber?: number;
+  shopName: string;
+  ownerName?: string;
+  billNo: string;
+  orderId?: string;
+  todayNetBill: number;
+  previousDebt: number; // Purana Baqaya from customer ledger
+  totalDue: number; // todayNetBill + previousDebt
+  cashCollected: number;
+  remainingDebt: number;
+  status: 'pending' | 'settled' | 'partial';
+  signatureNotes?: string;
+}
+
+export interface RouteDeliverySummary {
+  id: string;
+  summaryNumber: number; // 1, 2, 3...
+  summaryCode: string; // "Summary #1"
+  routeId: string;
+  routeName: string;
+  routeCode?: string;
+  dispatchDate: string;
+  driverName: string;
+  salesmanName: string;
+  vehicleNumber?: string;
+  shops: RouteSummaryShopRow[];
+  totalRouteSalesToday: number;
+  totalOldDebtCarried: number;
+  totalCollectibleTarget: number;
+  totalCashCollected: number;
+  totalRemainingDebt: number;
+  status: 'Dispatched' | 'Reconciled & Closed';
+  reconciledAt?: string;
+  reconciledBy?: string;
+  roznamchaEntryId?: string;
   notes?: string;
 }
 

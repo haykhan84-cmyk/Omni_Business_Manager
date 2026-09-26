@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Product } from '../../types';
 import { formatPKR } from '../../utils/calculations';
+import { getNextSequenceNumber, formatSkuId } from '../../utils/sequenceNumbering';
 
 interface DesktopProductCatalogProps {
   products: Product[];
@@ -89,7 +90,8 @@ export const DesktopProductCatalog: React.FC<DesktopProductCatalogProps> = ({
   const [formTaxSchedule, setFormTaxSchedule] = useState('3rd Sch (MRP)');
 
   const openAddModal = () => {
-    setFormSku(`SKU-${Date.now().toString().slice(-4)}`);
+    const nextSkuNum = getNextSequenceNumber(products, (p) => p.sku || p.id);
+    setFormSku(formatSkuId(nextSkuNum));
     setFormName('');
     setFormBrand('');
     setFormCategory('General FMCG');

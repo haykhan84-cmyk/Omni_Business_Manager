@@ -17,7 +17,7 @@ import {
   Package,
 } from 'lucide-react';
 import { UserAccount, UserRole } from '../../types';
-import { authenticateUser, DEFAULT_USERS } from '../../services/authService';
+import { authenticateUser, getLiveUsersForQuickLogin, DEFAULT_USERS } from '../../services/authService';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserAccount) => void;
@@ -31,36 +31,49 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, isOnli
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [quickUsers, setQuickUsers] = useState<UserAccount[]>(DEFAULT_USERS);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    getLiveUsersForQuickLogin().then((users) => {
+      if (users && users.length > 0) {
+        setQuickUsers(users);
+      }
+    });
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      const res = authenticateUser(identifier, pin, rememberMe);
+    try {
+      const res = await authenticateUser(identifier, pin, rememberMe);
       setIsSubmitting(false);
       if (res.success && res.user) {
         onLoginSuccess(res.user);
       } else {
         setErrorMsg(res.error || 'Invalid credentials. Please verify your ID and PIN.');
       }
-    }, 250);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setErrorMsg(err?.message || 'Authentication error. Please try again.');
+    }
   };
 
-  const handleSelectQuickRole = (user: UserAccount) => {
+  const handleSelectQuickRole = async (user: UserAccount) => {
     setIdentifier(user.employeeId);
     setPin(user.pin);
     setErrorMsg(null);
-    // Instant login for demo convenience
     setIsSubmitting(true);
-    setTimeout(() => {
-      const res = authenticateUser(user.employeeId, user.pin, rememberMe);
+    try {
+      const res = await authenticateUser(user.employeeId, user.pin, rememberMe);
       setIsSubmitting(false);
       if (res.success && res.user) {
         onLoginSuccess(res.user);
       }
-    }, 200);
+    } catch {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -208,7 +221,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, isOnli
               <span className="text-[10px] text-amber-400/90 font-mono">Demo Accounts</span>
             </div>
             <div className="grid grid-cols-1 gap-1.5">
-              {DEFAULT_USERS.map((usr) => {
+              {quickUsers.map((usr) => {
                 const getRoleIcon = (role: UserRole) => {
                   switch (role) {
                     case 'ADMIN':

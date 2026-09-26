@@ -301,6 +301,8 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             customers={customers}
             orders={orders}
             roznamcha={roznamcha}
+            onAddRoznamchaEntry={onAddRoznamchaEntry}
+            onDeleteOrder={onDeleteOrder}
           />
         )}
 
