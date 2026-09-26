@@ -22,6 +22,7 @@ import {
   syncRoznamchaEntryToSupabase,
   syncProductToSupabase,
   syncCustomerToSupabase,
+  syncCustomersToSupabase,
   syncAllToSupabase,
   syncBidirectional,
   pullAndMergeFromSupabase,
@@ -493,6 +494,19 @@ export default function App() {
     if (isOnline) {
       await syncCustomerToSupabase(newCust);
       fetchSupabaseLiveCounts().then(setSupabaseCounts);
+      setLastSyncedAt(new Date().toISOString());
+    }
+
+    await refreshData();
+  };
+
+  const handleBulkAddCustomers = async (newCusts: Customer[]) => {
+    if (!newCusts || newCusts.length === 0) return;
+    await db.customers.bulkAdd(newCusts);
+
+    if (isOnline) {
+      await syncCustomersToSupabase(newCusts);
+      fetchSupabaseLiveCounts().then(setSupabaseCounts).catch(() => {});
       setLastSyncedAt(new Date().toISOString());
     }
 
@@ -1003,6 +1017,7 @@ export default function App() {
             onDeleteProduct={handleDeleteProduct}
             onAddRoznamchaEntry={handleAddRoznamchaEntry}
             onAddCustomer={handleAddCustomer}
+            onBulkAddCustomers={handleBulkAddCustomers}
             onUpdateCustomer={handleUpdateCustomer}
             onDeleteCustomer={handleDeleteCustomer}
             onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}

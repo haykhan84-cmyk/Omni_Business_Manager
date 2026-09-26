@@ -50,6 +50,7 @@ interface DesktopConsoleViewProps {
   onDeleteProduct: (productId: string) => Promise<void>;
   onAddRoznamchaEntry: (entry: Omit<RoznamchaEntry, 'id' | 'entryNo' | 'synced'>) => Promise<void>;
   onAddCustomer: (customer: Omit<Customer, 'id' | 'currentBalance'>) => Promise<void>;
+  onBulkAddCustomers?: (customers: Customer[]) => Promise<void>;
   onUpdateCustomer: (customer: Customer) => Promise<void>;
   onDeleteCustomer: (customerId: string) => Promise<void>;
   onDeleteRoznamchaEntry: (entryId: string) => Promise<void>;
@@ -85,6 +86,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
   onDeleteProduct,
   onAddRoznamchaEntry,
   onAddCustomer,
+  onBulkAddCustomers,
   onUpdateCustomer,
   onDeleteCustomer,
   onDeleteRoznamchaEntry,
@@ -369,6 +371,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
             orders={orders}
             roznamcha={roznamcha}
             onAddCustomer={onAddCustomer}
+            onBulkAddCustomers={onBulkAddCustomers}
             onUpdateCustomer={onUpdateCustomer}
             onDeleteCustomer={onDeleteCustomer}
             onDeleteOrder={onDeleteOrder}

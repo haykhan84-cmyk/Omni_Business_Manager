@@ -31,6 +31,11 @@ import {
   Send,
   Eye,
   Trash2,
+  Upload,
+  FileUp,
+  FileSpreadsheet,
+  AlertCircle,
+  Check,
 } from 'lucide-react';
 import { Customer, Order, RoznamchaEntry, CustomerNote, ChannelType, TaxStatus } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
@@ -41,17 +46,27 @@ import {
   adjustCustomerCreditLimit,
   ACTIVE_TENANT_ID,
 } from '../../db/localDb';
+import { db } from '../../db';
+import { syncCustomersToSupabase } from '../../db/supabase';
 import {
   getNextSequenceNumber,
   formatShopId,
   extractSequenceNumber,
 } from '../../utils/sequenceNumbering';
+import {
+  parseCustomerCsv,
+  generateSampleCustomerCsvTemplate,
+  exportCustomersToCsv,
+  triggerCsvDownload,
+  ParsedCustomerRow,
+} from '../../utils/csvCustomerHelper';
 
 interface DesktopCustomer360Props {
   customers: Customer[];
   orders: Order[];
   roznamcha: RoznamchaEntry[];
   onAddCustomer: (customer: Omit<Customer, 'id' | 'currentBalance'>) => Promise<void>;
+  onBulkAddCustomers?: (customers: Customer[]) => Promise<void>;
   onUpdateCustomer: (customer: Customer) => Promise<void>;
   onDeleteCustomer?: (customerId: string) => Promise<void>;
   onDeleteOrder?: (orderId: string) => Promise<void>;
@@ -62,6 +77,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   orders,
   roznamcha,
   onAddCustomer,
+  onBulkAddCustomers,
   onUpdateCustomer,
   onDeleteCustomer,
   onDeleteOrder,
@@ -97,6 +113,18 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [isAdjustLimitModalOpen, setIsAdjustLimitModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Bulk Import & Export Modal State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importDragOver, setImportDragOver] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [importParsedRows, setImportParsedRows] = useState<ParsedCustomerRow[]>([]);
+  const [importSummary, setImportSummary] = useState({ total: 0, valid: 0, invalid: 0 });
+  const [isCommittingImport, setIsCommittingImport] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportRouteChoice, setExportRouteChoice] = useState<'all' | 'selected'>('all');
 
   // Form State
   const [formShopNumber, setFormShopNumber] = useState<number>(1);
@@ -562,53 +590,132 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
     setIsAddModalOpen(false);
   };
 
-  // Export CSV
+  // Bulk Import Handlers
+  const handleDownloadSampleTemplate = () => {
+    const templateContent = generateSampleCustomerCsvTemplate();
+    triggerCsvDownload(templateContent, 'customers_template.csv');
+    showToast('Downloaded sample CSV template (customers_template.csv)');
+  };
+
+  const processCsvFile = (file: File) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+      showToast('Please upload a valid .csv file format.');
+      return;
+    }
+
+    setImportFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = (e.target?.result as string) || '';
+      const parsed = parseCustomerCsv(content);
+      setImportParsedRows(parsed.rows);
+      setImportSummary({
+        total: parsed.totalRows,
+        valid: parsed.validRowsCount,
+        invalid: parsed.errorRowsCount,
+      });
+
+      if (parsed.totalRows === 0) {
+        showToast('The uploaded CSV file contains no data rows.');
+      } else if (parsed.errorRowsCount > 0) {
+        showToast(`Parsed ${parsed.totalRows} rows. ${parsed.errorRowsCount} row(s) missing required fields (Shop Name / Route).`);
+      } else {
+        showToast(`Parsed ${parsed.totalRows} rows successfully! Ready to commit.`);
+      }
+    };
+    reader.onerror = () => {
+      showToast('Error reading the CSV file.');
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCommitImport = async () => {
+    const validRows = importParsedRows.filter((r) => r.isValid);
+    if (validRows.length === 0) {
+      showToast('No valid customer rows to import. Each row must have a Shop Name and Route.');
+      return;
+    }
+
+    setIsCommittingImport(true);
+    try {
+      const startSeqNum = getNextSequenceNumber(customers, (c) => c.shopNumber || c.id);
+      const newCustomers: Customer[] = validRows.map((row, idx) => {
+        const assignedShopNum = startSeqNum + idx;
+        const custId = `cust-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`;
+        return {
+          id: custId,
+          tenant_id: ACTIVE_TENANT_ID,
+          shopNumber: assignedShopNum,
+          shopName: row.shop_name,
+          shop_name: row.shop_name,
+          name: row.owner_name || row.shop_name,
+          owner_name: row.owner_name || row.shop_name,
+          phone: row.phone,
+          whatsapp_number: row.whatsapp || row.phone,
+          route: row.route,
+          address: `${row.route}, Swat`,
+          zone: 'Mingora Zone 1',
+          channel_type: row.channel_type,
+          tax_status: 'Filer',
+          atlStatus: 'filer',
+          creditLimit: row.credit_limit,
+          credit_limit: row.credit_limit,
+          credit_days: 15,
+          currentBalance: row.opening_balance,
+          current_balance: row.opening_balance,
+          status: 'active',
+        };
+      });
+
+      // 1. Bulk insert into local Dexie.js
+      await db.customers.bulkPut(newCustomers);
+
+      // 2. Sync to Supabase
+      try {
+        await syncCustomersToSupabase(newCustomers);
+      } catch (cloudErr) {
+        console.warn('Remote Supabase sync warning during bulk customer import:', cloudErr);
+      }
+
+      // 3. Inform parent component if onBulkAddCustomers prop exists
+      if (onBulkAddCustomers) {
+        await onBulkAddCustomers(newCustomers);
+      }
+
+      // 4. Update UI
+      showToast(
+        `🎉 Successfully imported ${newCustomers.length} retailers (Shop #${startSeqNum} to Shop #${startSeqNum + newCustomers.length - 1})!`
+      );
+      setIsImportModalOpen(false);
+      setImportParsedRows([]);
+      setImportFileName('');
+      setImportSummary({ total: 0, valid: 0, invalid: 0 });
+    } catch (err: any) {
+      console.error('Error committing bulk customer import:', err);
+      showToast(`Failed to import customers: ${err?.message || 'Database error'}`);
+    } finally {
+      setIsCommittingImport(false);
+    }
+  };
+
+  // Bulk Export Handlers
+  const handleExportCustomers = (filterRoute?: string) => {
+    const route =
+      filterRoute !== undefined
+        ? filterRoute
+        : exportRouteChoice === 'selected'
+        ? selectedRoute
+        : 'All';
+    const { csvString, filename, rowCount } = exportCustomersToCsv(customers, route);
+    triggerCsvDownload(csvString, filename);
+    setIsExportModalOpen(false);
+    showToast(`Exported ${rowCount} retailers to ${filename}`);
+  };
+
+  // Legacy Export CSV (kept for backwards compatibility)
   const handleExportCsv = () => {
-    const headers = [
-      'Account ID',
-      'Shop Name',
-      'Proprietor',
-      'Route',
-      'Channel Type',
-      'NTN',
-      'STRN',
-      'Phone',
-      'Credit Limit (PKR)',
-      'Current Balance (PKR)',
-      'Aging Risk',
-      'Status',
-    ];
-
-    const rows = filteredCustomers.map((c) => [
-      c.id,
-      `"${c.shopName.replace(/"/g, '""')}"`,
-      `"${c.name.replace(/"/g, '""')}"`,
-      `"${c.route}"`,
-      `"${c.channel_type || 'Retail'}"`,
-      `"${c.ntn || ''}"`,
-      `"${c.strn || ''}"`,
-      `"${c.phone}"`,
-      c.creditLimit,
-      c.currentBalance,
-      `"${getCustomerAging(c)}"`,
-      `"${c.status}"`,
-    ]);
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute(
-      'download',
-      `PrimeLink_Retailer_Master_${new Date().toISOString().slice(0, 10)}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Retailer directory exported as CSV.');
+    handleExportCustomers(selectedRoute === 'All' ? undefined : selectedRoute);
   };
 
   // Simulate 3rd party sync
@@ -716,23 +823,38 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
           {/* Quick Action Controls */}
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={handleExportCsv}
-              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
-              title="Export filtered directory to CSV"
+              onClick={() => {
+                setImportFileName('');
+                setImportParsedRows([]);
+                setImportSummary({ total: 0, valid: 0, invalid: 0 });
+                setIsImportModalOpen(true);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              title="Bulk import retailers from CSV spreadsheet"
             >
-              <Download className="w-4 h-4 text-slate-500" />
-              <span>Export Ledger</span>
+              <Upload className="w-4 h-4 text-amber-700" />
+              <span>📥 Bulk Import (CSV)</span>
+            </button>
+
+            <button
+              onClick={() => setIsExportModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-300 shadow-2xs"
+              title="Export complete customer master directory to CSV"
+            >
+              <Download className="w-4 h-4 text-slate-600" />
+              <span>📤 Export Customers (CSV)</span>
             </button>
 
             <button
               onClick={handleSyncApis}
               disabled={isSyncingApis}
-              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 disabled:opacity-60"
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 disabled:opacity-60"
+              title="Sync 3rd-Party APIs"
             >
               <RefreshCw
-                className={`w-4 h-4 text-amber-600 ${isSyncingApis ? 'animate-spin' : ''}`}
+                className={`w-3.5 h-3.5 text-amber-600 ${isSyncingApis ? 'animate-spin' : ''}`}
               />
-              <span>Sync 3rd-Party APIs</span>
+              <span className="hidden sm:inline">Sync APIs</span>
             </button>
 
             <button
@@ -740,7 +862,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
               className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Onboard Customer</span>
+              <span>+ Add New Retailer</span>
             </button>
           </div>
         </div>
@@ -1018,7 +1140,17 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
+            <div className="flex items-center gap-2.5 font-mono text-[11px] text-slate-500">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs font-sans text-xs"
+                title="Export customer list to CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-600" />
+                <span>📤 Export Customers (CSV)</span>
+              </button>
+              <span className="hidden sm:inline text-slate-300">•</span>
               <span>
                 Exposure: <strong className="text-slate-900">{formatPKR(filteredCustomers.reduce((a, b) => a + b.currentBalance, 0))}</strong>
               </span>
@@ -2455,6 +2587,464 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                 className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
               >
                 Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: BULK IMPORT (CSV & DRAG-AND-DROP)                                */}
+      {/* ========================================================================= */}
+      {isImportModalOpen && (() => {
+        const startSeqNum = getNextSequenceNumber(customers, (c) => c.shopNumber || c.id);
+        let validCounter = 0;
+        const validIndices = importParsedRows.map((r) => {
+          if (r.isValid) {
+            const idx = validCounter;
+            validCounter++;
+            return idx;
+          }
+          return -1;
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+              {/* Modal Header */}
+              <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-600 flex items-center justify-center shadow-xs">
+                    <Upload className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      Bulk Import Customers / Shops (CSV)
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Upload retailer directory spreadsheet. Automatically validates records and assigns sequential Shop numbers.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Modal Content Body */}
+              <div className="p-5 overflow-y-auto flex-1 space-y-4 text-xs">
+                {/* 1. Download Sample CSV Template Bar */}
+                <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                      <FileSpreadsheet className="w-4 h-4 text-amber-700" />
+                      <span>Standard CSV Schema &amp; Pre-Structured Template</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Required columns: <code className="bg-amber-100/90 text-amber-900 px-1 py-0.5 rounded font-mono font-bold">shop_name</code> and <code className="bg-amber-100/90 text-amber-900 px-1 py-0.5 rounded font-mono font-bold">route</code>.
+                      Optional: <code className="font-mono text-slate-700">owner_name, phone, whatsapp, credit_limit, opening_balance, channel_type</code>.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadSampleTemplate}
+                    className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer shrink-0"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Sample CSV Template</span>
+                  </button>
+                </div>
+
+                {/* 2. Drag & Drop or File Upload Box */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setImportDragOver(true);
+                  }}
+                  onDragLeave={() => setImportDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setImportDragOver(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      processCsvFile(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                    importDragOver
+                      ? 'border-amber-500 bg-amber-50/60 scale-[0.99]'
+                      : importFileName
+                      ? 'border-emerald-400 bg-emerald-50/30'
+                      : 'border-slate-300 hover:border-amber-400 bg-slate-50/60 hover:bg-amber-50/20'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        processCsvFile(e.target.files[0]);
+                      }
+                    }}
+                  />
+
+                  <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-slate-200 flex items-center justify-center text-amber-600 mb-2.5">
+                    <FileUp className="w-6 h-6" />
+                  </div>
+
+                  {importFileName ? (
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-900 text-sm flex items-center justify-center gap-1.5">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        {importFileName}
+                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        File loaded • Click or drop another .csv file to replace
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-800 text-sm">
+                        Drag &amp; drop your .csv file here, or <span className="text-amber-700 underline">browse files</span>
+                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        Supports standard CSV files with commas, quotes, and custom header columns
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Visual Validation Preview Table */}
+                {importParsedRows.length > 0 && (
+                  <div className="space-y-3 pt-1">
+                    {/* Validation Counters & Next Sequence Badge */}
+                    <div className="flex flex-wrap items-center justify-between gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                          Validation Preview:
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-800">
+                          {importSummary.total} Total
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                          ✓ {importSummary.valid} Valid
+                        </span>
+                        {importSummary.invalid > 0 && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {importSummary.invalid} Missing Fields
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Auto-Sequential Shop Range Indicator */}
+                      <div className="text-[11px] font-mono text-amber-900 bg-amber-100/80 border border-amber-200 px-3 py-1 rounded-xl font-bold">
+                        Auto-Assigning: Shop #{startSeqNum} to Shop #{startSeqNum + Math.max(0, importSummary.valid - 1)}
+                      </div>
+                    </div>
+
+                    {/* Table Container */}
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs max-h-72 overflow-y-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] sticky top-0 z-10 border-b border-slate-200">
+                          <tr>
+                            <th className="py-2.5 px-3 whitespace-nowrap">Assigned Shop #</th>
+                            <th className="py-2.5 px-3 whitespace-nowrap">Shop Name *</th>
+                            <th className="py-2.5 px-3 whitespace-nowrap">Owner / Contact</th>
+                            <th className="py-2.5 px-3 whitespace-nowrap">Route / Beat *</th>
+                            <th className="py-2.5 px-3 whitespace-nowrap">Phone / WA</th>
+                            <th className="py-2.5 px-3 whitespace-nowrap text-right">Credit Limit</th>
+                            <th className="py-2.5 px-3 whitespace-nowrap text-right">Opening Debt</th>
+                            <th className="py-2.5 px-3 whitespace-nowrap">Channel</th>
+                            <th className="py-2.5 px-3 whitespace-nowrap text-center">Validation</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 font-mono text-slate-800">
+                          {importParsedRows.map((row, idx) => {
+                            const isError = !row.isValid;
+                            const assignedShopNum = row.isValid ? startSeqNum + validIndices[idx] : null;
+
+                            return (
+                              <tr
+                                key={idx}
+                                className={
+                                  isError
+                                    ? 'bg-rose-50/90 text-rose-950 font-medium'
+                                    : idx % 2 === 0
+                                    ? 'bg-white'
+                                    : 'bg-slate-50/60'
+                                }
+                              >
+                                {/* Assigned Shop # */}
+                                <td className="py-2 px-3 whitespace-nowrap font-bold">
+                                  {assignedShopNum ? (
+                                    <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 text-[11px] font-bold">
+                                      Shop #{assignedShopNum}
+                                    </span>
+                                  ) : (
+                                    <span className="text-rose-500 font-mono text-[10px]">—</span>
+                                  )}
+                                </td>
+
+                                {/* Shop Name (Required) */}
+                                <td className="py-2 px-3 whitespace-nowrap font-sans font-bold">
+                                  {row.shop_name ? (
+                                    <span>{row.shop_name}</span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 bg-rose-200 text-rose-900 rounded font-bold text-[10px]">
+                                      ⚠️ MISSING SHOP NAME
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Owner Name */}
+                                <td className="py-2 px-3 whitespace-nowrap font-sans text-slate-700">
+                                  {row.owner_name}
+                                </td>
+
+                                {/* Route (Required) */}
+                                <td className="py-2 px-3 whitespace-nowrap font-sans font-semibold">
+                                  {row.route ? (
+                                    <span className="text-[#35618d]">{row.route}</span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 bg-rose-200 text-rose-900 rounded font-bold text-[10px]">
+                                      ⚠️ MISSING ROUTE
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Phone */}
+                                <td className="py-2 px-3 whitespace-nowrap text-slate-600">
+                                  {row.phone || row.whatsapp || '—'}
+                                </td>
+
+                                {/* Credit Limit (Clean number, no "Rs.") */}
+                                <td className="py-2 px-3 whitespace-nowrap text-right font-bold text-slate-900">
+                                  {row.credit_limit.toLocaleString()}
+                                </td>
+
+                                {/* Opening Balance (Clean number, no "Rs.") */}
+                                <td className="py-2 px-3 whitespace-nowrap text-right font-bold text-slate-900">
+                                  {row.opening_balance.toLocaleString()}
+                                </td>
+
+                                {/* Channel Type */}
+                                <td className="py-2 px-3 whitespace-nowrap font-sans text-[11px] text-slate-600">
+                                  {row.channel_type}
+                                </td>
+
+                                {/* Status Indicator */}
+                                <td className="py-2 px-3 whitespace-nowrap text-center">
+                                  {row.isValid ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                      <Check className="w-3 h-3" /> Ready
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900">
+                                      <AlertCircle className="w-3 h-3" /> {row.errors.join(' & ')}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Controls */}
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="text-xs text-slate-500">
+                  {importSummary.invalid > 0 ? (
+                    <span className="text-amber-800 font-medium">
+                      Note: Rows with missing Shop Name or Route are highlighted in red and will be excluded.
+                    </span>
+                  ) : importSummary.valid > 0 ? (
+                    <span className="text-emerald-700 font-medium">
+                      All {importSummary.valid} rows verified and ready to link with Order Booker &amp; Route Summaries!
+                    </span>
+                  ) : (
+                    <span>Upload a CSV file to validate and preview retailer records.</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsImportModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importSummary.valid === 0 || isCommittingImport}
+                    onClick={handleCommitImport}
+                    className="px-5 py-2 rounded-xl text-xs font-black text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    {isCommittingImport ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Committing to Database...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Commit Import ({importSummary.valid} Retailers)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: BULK EXPORT (ONE-CLICK CSV DOWNLOAD)                              */}
+      {/* ========================================================================= */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-600 flex items-center justify-center text-white shadow-xs">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold">Export Customers (CSV)</h3>
+                  <p className="text-xs text-slate-400">
+                    Download complete retailer directory for sales routes, field recovery, and accounting
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body Options */}
+            <div className="p-6 space-y-5 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 uppercase tracking-wider block mb-2 text-[11px]">
+                  Select Export Scope:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setExportRouteChoice('all')}
+                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                      exportRouteChoice === 'all'
+                        ? 'border-amber-600 bg-amber-50/70 ring-2 ring-amber-500/20 shadow-2xs'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="font-bold text-slate-900 flex items-center justify-between">
+                      <span>All Customers</span>
+                      <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-800">
+                        {customers.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Export all retail accounts across all routes and territories
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setExportRouteChoice('selected')}
+                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                      exportRouteChoice === 'selected'
+                        ? 'border-amber-600 bg-amber-50/70 ring-2 ring-amber-500/20 shadow-2xs'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="font-bold text-slate-900 flex items-center justify-between">
+                      <span>Current Route</span>
+                      <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">
+                        {customers.filter((c) => selectedRoute === 'All' || c.route === selectedRoute).length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Filtered by: <span className="font-bold text-slate-700">{selectedRoute}</span>
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Operational Columns Included */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+                <span className="font-bold text-slate-700 block text-[11px] uppercase tracking-wider">
+                  Operational Columns in Exported CSV:
+                </span>
+                <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
+                  {[
+                    'Shop #',
+                    'Shop Name',
+                    'Owner Name',
+                    'Phone',
+                    'WhatsApp',
+                    'Route',
+                    'Channel Type',
+                    'Credit Limit',
+                    'Current Outstanding Balance (Debt)',
+                    'Account Status',
+                  ].map((col) => (
+                    <span
+                      key={col}
+                      className="bg-white px-2 py-1 rounded-md border border-slate-200 text-slate-700 font-semibold"
+                    >
+                      {col}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 pt-1">
+                  ✓ Amounts formatted cleanly as numbers without "Rs." prefix for standard calculation in Excel / ERP.
+                </p>
+              </div>
+
+              {/* Target Filename Preview */}
+              <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-3">
+                <span>Output File:</span>
+                <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg">
+                  primelink_customers_{new Date().toISOString().slice(0, 10)}.csv
+                </span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  handleExportCustomers(exportRouteChoice === 'selected' ? selectedRoute : 'All')
+                }
+                className="px-5 py-2 rounded-xl text-xs font-black text-white bg-amber-600 hover:bg-amber-500 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download CSV File</span>
               </button>
             </div>
           </div>
