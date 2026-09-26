@@ -44,7 +44,56 @@ import { db } from '../../db';
 import { ACTIVE_TENANT_ID } from '../../db/localDb';
 import { syncEmployeeToSupabase, deleteEmployeeFromSupabase } from '../../db/supabase';
 import { formatPKR, formatDate, formatDateTime } from '../../utils/calculations';
-import { getNextSequenceNumber, formatEmployeeId } from '../../utils/sequenceNumbering';
+import { getNextSequenceNumber, formatEmployeeId, extractSequenceNumber } from '../../utils/sequenceNumbering';
+
+export const AVAILABLE_ROLES: EmployeeRole[] = [
+  'Order Booker / Field Salesman',
+  'Delivery Van Driver',
+  'Van Helper / Loader (Mazdoor)',
+  'Warehouse Supervisor',
+  'Cashier',
+  'Accountant',
+  'Office Manager',
+  'Office Boy',
+];
+
+export const AVAILABLE_ROUTES: string[] = [
+  'Mingora',
+  'Saidu Shareef',
+  'Kabal',
+  'Barikot',
+  'Khwazakhela',
+  'Mata',
+  'Internal Depot / Office',
+];
+
+export const getRoleBadge = (role: string) => {
+  if (role.includes('Office Manager')) {
+    return 'bg-purple-100 text-purple-900 border-purple-200';
+  }
+  if (role.includes('Office Boy')) {
+    return 'bg-sky-100 text-sky-900 border-sky-200';
+  }
+  if (role.includes('Order Booker') || role.includes('Salesman')) {
+    return 'bg-amber-100 text-amber-900 border-amber-200';
+  }
+  if (role.includes('Driver')) {
+    return 'bg-emerald-100 text-emerald-900 border-emerald-200';
+  }
+  if (role.includes('Loader') || role.includes('Mazdoor')) {
+    return 'bg-orange-100 text-orange-900 border-orange-200';
+  }
+  if (role.includes('Warehouse') || role.includes('Supervisor')) {
+    return 'bg-cyan-100 text-cyan-900 border-cyan-200';
+  }
+  if (role.includes('Cashier')) {
+    return 'bg-violet-100 text-violet-900 border-violet-200';
+  }
+  if (role.includes('Accountant')) {
+    return 'bg-slate-200 text-slate-800 border-slate-300';
+  }
+  return 'bg-slate-100 text-slate-800 border-slate-200';
+};
 
 interface DesktopStaffAttendanceProps {
   roznamcha: RoznamchaEntry[];
@@ -82,6 +131,10 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
   const [selectedPayrollForPayslip, setSelectedPayrollForPayslip] = useState<PayrollRecord | null>(null);
   const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
 
+  // Dossier Modal State (strictly bound to clicked employee)
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [showDossierModal, setShowDossierModal] = useState<boolean>(false);
+
   const handleConfirmDeleteEmployee = async () => {
     if (!employeeToDelete) return;
     try {
@@ -106,12 +159,14 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
   const [newEmpFatherName, setNewEmpFatherName] = useState('');
   const [newEmpPhone, setNewEmpPhone] = useState('');
   const [newEmpCnic, setNewEmpCnic] = useState('');
-  const [newEmpRole, setNewEmpRole] = useState<EmployeeRole>('Order Booker / Salesman');
-  const [newEmpRoute, setNewEmpRoute] = useState('Main Bazar');
+  const [newEmpRole, setNewEmpRole] = useState<EmployeeRole>('Order Booker / Field Salesman');
+  const [newEmpRoute, setNewEmpRoute] = useState('Mingora');
   const [newEmpVan, setNewEmpVan] = useState('');
   const [newEmpBaseSalary, setNewEmpBaseSalary] = useState('45000');
   const [newEmpAllowanceRate, setNewEmpAllowanceRate] = useState('200');
   const [newEmpCommissionRate, setNewEmpCommissionRate] = useState('1.5');
+  const [newEmpPin, setNewEmpPin] = useState('1234');
+  const [newEmpStatus, setNewEmpStatus] = useState<'Active' | 'Inactive'>('Active');
   const [newEmpImei, setNewEmpImei] = useState('');
   const [isAddAdvancedOpen, setIsAddAdvancedOpen] = useState(false);
 
@@ -121,29 +176,31 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
   const [editEmpFatherName, setEditEmpFatherName] = useState('');
   const [editEmpPhone, setEditEmpPhone] = useState('');
   const [editEmpCnic, setEditEmpCnic] = useState('');
-  const [editEmpRole, setEditEmpRole] = useState<EmployeeRole>('Order Booker / Salesman');
-  const [editEmpRoute, setEditEmpRoute] = useState('');
+  const [editEmpRole, setEditEmpRole] = useState<EmployeeRole>('Order Booker / Field Salesman');
+  const [editEmpRoute, setEditEmpRoute] = useState('Mingora');
   const [editEmpVan, setEditEmpVan] = useState('');
   const [editEmpBaseSalary, setEditEmpBaseSalary] = useState('45000');
   const [editEmpAllowanceRate, setEditEmpAllowanceRate] = useState('200');
   const [editEmpCommissionRate, setEditEmpCommissionRate] = useState('1.5');
-  const [editEmpStatus, setEditEmpStatus] = useState<'Active' | 'Inactive' | 'On Leave' | 'Resigned'>('Active');
+  const [editEmpPin, setEditEmpPin] = useState('1234');
+  const [editEmpStatus, setEditEmpStatus] = useState<'Active' | 'Inactive'>('Active');
   const [editEmpImei, setEditEmpImei] = useState('');
   const [isEditAdvancedOpen, setIsEditAdvancedOpen] = useState(false);
 
   const handleOpenEditModal = (emp: Employee) => {
     setEditingEmployee(emp);
-    setEditEmpName(emp.name);
+    setEditEmpName(emp.name || '');
     setEditEmpFatherName(emp.father_name || '');
     setEditEmpPhone(emp.phone || '');
-    setEditEmpCnic(emp.cnic_number || '');
+    setEditEmpCnic(emp.cnic || emp.cnic_number || '');
     setEditEmpRole(emp.role);
-    setEditEmpRoute(emp.assigned_route || '');
+    setEditEmpRoute(emp.assigned_route || 'Mingora');
     setEditEmpVan(emp.van_assigned || '');
     setEditEmpBaseSalary(String(emp.base_salary || 0));
-    setEditEmpAllowanceRate(String(emp.daily_allowance_rate || 0));
+    setEditEmpAllowanceRate(String(emp.ta_da_rate ?? emp.daily_allowance_rate ?? 0));
     setEditEmpCommissionRate(String(emp.commission_rate || 0));
-    setEditEmpStatus((emp.status as any) || 'Active');
+    setEditEmpPin(emp.pin || '1234');
+    setEditEmpStatus(emp.status === 'Inactive' ? 'Inactive' : 'Active');
     setEditEmpImei(emp.imei || '');
     setIsEditAdvancedOpen(Boolean(emp.imei && emp.imei.trim().length > 0));
   };
@@ -158,18 +215,26 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
 
     setIsSubmitting(true);
     try {
+      const baseSalaryNum = parseFloat(editEmpBaseSalary) || 0;
+      const taDaRateNum = parseFloat(editEmpAllowanceRate) || 0;
+      const commissionRateNum = parseFloat(editEmpCommissionRate) || 0;
+      const cnicVal = editEmpCnic.trim();
+
       const updatedFields: Partial<Employee> = {
         name: editEmpName.trim(),
         father_name: editEmpFatherName.trim() || undefined,
         phone: editEmpPhone.trim() || '+92 300 0000000',
-        cnic_number: editEmpCnic.trim() || undefined,
+        cnic: cnicVal || undefined,
+        cnic_number: cnicVal || undefined,
         role: editEmpRole,
-        assigned_route: editEmpRoute.trim() || 'General Market Beat',
+        assigned_route: editEmpRoute.trim() || 'Internal Depot / Office',
         van_assigned: editEmpVan.trim() || undefined,
-        base_salary: parseFloat(editEmpBaseSalary) || 0,
-        daily_allowance_rate: parseFloat(editEmpAllowanceRate) || 0,
-        commission_rate: parseFloat(editEmpCommissionRate) || 0,
-        status: editEmpStatus as any,
+        base_salary: baseSalaryNum,
+        daily_allowance_rate: taDaRateNum,
+        ta_da_rate: taDaRateNum,
+        commission_rate: commissionRateNum,
+        pin: editEmpPin.trim() || '1234',
+        status: editEmpStatus,
         imei: editEmpImei.trim() || undefined,
       };
 
@@ -180,6 +245,11 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
       };
       await syncEmployeeToSupabase(updatedFullEmp);
       await fetchLocalData();
+
+      // If this employee is currently viewed in Dossier modal, update selectedEmployee state
+      if (selectedEmployee && selectedEmployee.id === editingEmployee.id) {
+        setSelectedEmployee(updatedFullEmp);
+      }
 
       setEditingEmployee(null);
     } catch (err) {
@@ -241,10 +311,17 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
   const totalFieldStaff = employees.length;
 
   const roleCounts = useMemo(() => {
-    const bookers = employees.filter((e) => e.role === 'Order Booker / Salesman').length;
-    const labor = employees.filter((e) => e.role === 'Van Helper / Loader (Mazdoor)').length;
-    const drivers = employees.filter((e) => e.role === 'Delivery Driver').length;
-    const admin = employees.filter((e) => e.role === 'Cashier' || e.role === 'Accountant' || e.role === 'Recovery Officer').length;
+    const bookers = employees.filter((e) => e.role.includes('Order Booker') || e.role.includes('Salesman')).length;
+    const labor = employees.filter((e) => e.role.includes('Loader') || e.role.includes('Mazdoor')).length;
+    const drivers = employees.filter((e) => e.role.includes('Driver')).length;
+    const admin = employees.filter((e) =>
+      e.role.includes('Office') ||
+      e.role.includes('Supervisor') ||
+      e.role.includes('Cashier') ||
+      e.role.includes('Accountant') ||
+      e.role.includes('Recovery') ||
+      e.role.includes('Admin')
+    ).length;
     return { bookers, labor, drivers, admin };
   }, [employees]);
 
@@ -286,7 +363,7 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
       // Find matching employee by assigned route or name
       const matched = employees.find(
         (e) =>
-          e.role === 'Order Booker / Salesman' &&
+          (e.role.includes('Order Booker') || e.role.includes('Salesman')) &&
           (e.assigned_route.toLowerCase().includes(o.route.toLowerCase()) ||
             o.route.toLowerCase().includes(e.assigned_route.toLowerCase()))
       );
@@ -352,10 +429,17 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
     return employees.filter((emp) => {
       // Role filter
       if (roleFilter !== 'all') {
-        if (roleFilter === 'bookers' && emp.role !== 'Order Booker / Salesman') return false;
-        if (roleFilter === 'labor' && emp.role !== 'Van Helper / Loader (Mazdoor)') return false;
-        if (roleFilter === 'drivers' && emp.role !== 'Delivery Driver') return false;
-        if (roleFilter === 'admin' && (emp.role === 'Order Booker / Salesman' || emp.role === 'Delivery Driver' || emp.role === 'Van Helper / Loader (Mazdoor)')) return false;
+        if (roleFilter === 'bookers' && !emp.role.includes('Order Booker') && !emp.role.includes('Salesman')) return false;
+        if (roleFilter === 'labor' && !emp.role.includes('Loader') && !emp.role.includes('Mazdoor')) return false;
+        if (roleFilter === 'drivers' && !emp.role.includes('Driver')) return false;
+        if (
+          roleFilter === 'admin' &&
+          (emp.role.includes('Order Booker') ||
+            emp.role.includes('Salesman') ||
+            emp.role.includes('Driver') ||
+            (emp.role.includes('Loader') && !emp.role.includes('Supervisor')))
+        )
+          return false;
       }
 
       // Territory filter
@@ -386,8 +470,22 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
 
   // Open Add Employee Modal with Next Sequential Number
   const openAddEmployeeModal = () => {
-    const nextNum = getNextSequenceNumber(employees, (e) => e.id);
+    const nextNum = getNextSequenceNumber(employees, (e) => e.employeeNumber || e.id);
     setNewEmpCode(formatEmployeeId(nextNum));
+    setNewEmpName('');
+    setNewEmpFatherName('');
+    setNewEmpPhone('');
+    setNewEmpCnic('');
+    setNewEmpRole('Order Booker / Field Salesman');
+    setNewEmpRoute('Mingora');
+    setNewEmpVan('');
+    setNewEmpBaseSalary('45000');
+    setNewEmpAllowanceRate('200');
+    setNewEmpCommissionRate('1.5');
+    setNewEmpPin('1234');
+    setNewEmpStatus('Active');
+    setNewEmpImei('');
+    setIsAddAdvancedOpen(false);
     setShowAddEmployeeModal(true);
   };
 
@@ -401,25 +499,35 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
 
     setIsSubmitting(true);
     try {
-      const finalId = newEmpCode.trim() || formatEmployeeId(getNextSequenceNumber(employees, (e) => e.id));
+      const nextSeqNum = extractSequenceNumber(newEmpCode) || getNextSequenceNumber(employees, (e) => e.employeeNumber || e.id);
+      const finalId = newEmpCode.trim() || formatEmployeeId(nextSeqNum);
+      const baseSalaryNum = parseFloat(newEmpBaseSalary) || 0;
+      const taDaRateNum = parseFloat(newEmpAllowanceRate) || 0;
+      const commRateNum = parseFloat(newEmpCommissionRate) || 0;
+      const cnicVal = newEmpCnic.trim();
+
       const newEmp: Employee = {
         id: finalId,
+        employeeNumber: nextSeqNum,
         tenant_id: ACTIVE_TENANT_ID,
         name: newEmpName.trim(),
         father_name: newEmpFatherName.trim() || undefined,
         phone: newEmpPhone.trim() || '+92 300 0000000',
-        cnic_number: newEmpCnic.trim() || undefined,
+        cnic: cnicVal || undefined,
+        cnic_number: cnicVal || undefined,
         role: newEmpRole,
-        assigned_route: newEmpRoute.trim() || 'General Market Beat',
+        assigned_route: newEmpRoute.trim() || 'Internal Depot / Office',
         van_assigned: newEmpVan.trim() || undefined,
-        base_salary: parseFloat(newEmpBaseSalary) || 40000,
-        daily_allowance_rate: parseFloat(newEmpAllowanceRate) || 200,
-        commission_rate: parseFloat(newEmpCommissionRate) || 0,
-        status: 'Active',
+        base_salary: baseSalaryNum,
+        daily_allowance_rate: taDaRateNum,
+        ta_da_rate: taDaRateNum,
+        commission_rate: commRateNum,
+        pin: newEmpPin.trim() || '1234',
+        status: newEmpStatus,
         imei: newEmpImei.trim() || undefined,
       };
 
-      await db.employees.add(newEmp);
+      await db.employees.put(newEmp);
       await syncEmployeeToSupabase(newEmp);
       await fetchLocalData();
 
@@ -1045,8 +1153,10 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
 
                       {/* Role & Grade */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-bold text-slate-900 block">{emp.role}</span>
-                        <span className="text-[10px] text-slate-500">
+                        <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border inline-block ${getRoleBadge(emp.role)}`}>
+                          {emp.role}
+                        </span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
                           {emp.commission_rate > 0 ? `Commission: ${emp.commission_rate}%` : 'Fixed Grade'}
                         </span>
                       </td>
@@ -1084,12 +1194,33 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
 
                       {/* Attendance & TA/DA */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="text-[11px] font-bold text-emerald-700">Checked-In 07:45 AM</span>
-                          <span className="font-mono text-[11px] text-slate-900 font-semibold">
-                            {formatPKR(emp.daily_allowance_rate)} TA/DA Accrued
-                          </span>
-                        </div>
+                        {(() => {
+                          const todayAtt = todayAttendance.find((a) => a.employee_id === emp.id);
+                          const tadaRate = emp.ta_da_rate ?? emp.daily_allowance_rate ?? 0;
+                          if (todayAtt) {
+                            return (
+                              <div className="flex flex-col">
+                                <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  {todayAtt.status} ({todayAtt.check_in_time || '07:45 AM'})
+                                </span>
+                                <span className="font-mono text-[11px] text-slate-900 font-semibold">
+                                  {formatPKR(todayAtt.allowance || tadaRate)} TA/DA Accrued
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="flex flex-col">
+                              <span className="text-[11px] font-medium text-slate-400">
+                                Not Checked In Today
+                              </span>
+                              <span className="font-mono text-[10px] text-slate-400">
+                                Rate: {formatPKR(tadaRate)}/d
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Base Salary */}
@@ -1114,9 +1245,23 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                       {/* Actions */}
                       <td className="py-3.5 px-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Dossier Modal Button (strictly bound to clicked employee) */}
+                          <button
+                            onClick={() => {
+                              setSelectedEmployee(emp);
+                              setShowDossierModal(true);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                            title={`View Complete Dossier for ${emp.name}`}
+                            type="button"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Dossier</span>
+                          </button>
+
                           <button
                             onClick={() => handleOpenEditModal(emp)}
-                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 hover:text-amber-900 cursor-pointer transition-colors"
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
                             title="Edit Employee Profile"
                             type="button"
                           >
@@ -1126,10 +1271,10 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                           <button
                             onClick={() => handleOpenPayslip(emp)}
                             className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
-                            title="View Employee Payslip / Dossier"
+                            title="Print Payslip Voucher"
                             type="button"
                           >
-                            <FileText className="w-3.5 h-3.5" />
+                            <Printer className="w-3.5 h-3.5" />
                           </button>
 
                           <button
@@ -1485,32 +1630,35 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
-                    Distribution Role *
+                    Job Role / Designation *
                   </label>
                   <select
                     value={newEmpRole}
                     onChange={(e) => setNewEmpRole(e.target.value as EmployeeRole)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-bold bg-white"
                   >
-                    <option value="Order Booker / Salesman">Order Booker / Salesman</option>
-                    <option value="Delivery Driver">Delivery Driver</option>
-                    <option value="Van Helper / Loader (Mazdoor)">Van Helper / Loader (Mazdoor)</option>
-                    <option value="Recovery Officer">Recovery Officer</option>
-                    <option value="Cashier">Cashier</option>
-                    <option value="Accountant">Accountant</option>
+                    {AVAILABLE_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
-                    Assigned Route / Unit
+                    Assigned Route / Depot *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={newEmpRoute}
                     onChange={(e) => setNewEmpRoute(e.target.value)}
-                    placeholder="e.g. Mingora Central / Saidu Sharif"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900"
-                  />
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-bold bg-white"
+                  >
+                    {AVAILABLE_ROUTES.map((rt) => (
+                      <option key={rt} value={rt}>
+                        {rt}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1548,6 +1696,49 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                     onChange={(e) => setNewEmpCommissionRate(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    4-Digit Login PIN *
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    required
+                    value={newEmpPin}
+                    onChange={(e) => setNewEmpPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="e.g. 1234"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold tracking-widest"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Used for Mobile app and Console login</span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Account Status *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 mt-0.5">
+                    {(['Active', 'Inactive'] as const).map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setNewEmpStatus(st)}
+                        className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                          newEmpStatus === st
+                            ? st === 'Active'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-slate-700 text-white border-slate-700 shadow-xs'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${st === 'Active' ? 'bg-emerald-300' : 'bg-slate-400'}`} />
+                        <span>{st}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1680,36 +1871,39 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                 </div>
               </div>
 
-              {/* Role & Assigned Market Route */}
+              {/* Role & Assigned Route */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
-                    Role *
+                    Job Role / Designation *
                   </label>
                   <select
                     value={editEmpRole}
                     onChange={(e) => setEditEmpRole(e.target.value as EmployeeRole)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-bold bg-white"
                   >
-                    <option value="Order Booker / Salesman">Order Booker / Salesman</option>
-                    <option value="Delivery Driver">Delivery Driver (Van Driver)</option>
-                    <option value="Van Helper / Loader (Mazdoor)">Van Helper / Loader (Mazdoor)</option>
-                    <option value="Recovery Officer">Recovery Officer</option>
-                    <option value="Cashier">Cashier</option>
-                    <option value="Accountant">Accountant</option>
+                    {AVAILABLE_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
-                    Assigned Market Route
+                    Assigned Route / Depot *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={editEmpRoute}
                     onChange={(e) => setEditEmpRoute(e.target.value)}
-                    placeholder="e.g. Main Bazar, Mingora Bypass, Saidu Sharif"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900"
-                  />
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-bold bg-white"
+                  >
+                    {AVAILABLE_ROUTES.map((rt) => (
+                      <option key={rt} value={rt}>
+                        {rt}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1751,42 +1945,54 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                 </div>
               </div>
 
-              {/* Status Toggle (Active / Inactive / On Leave) */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1.5">
-                  Status Toggle
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['Active', 'Inactive', 'On Leave'] as const).map((st) => {
-                    const isSelected = editEmpStatus === st;
-                    return (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => setEditEmpStatus(st)}
-                        className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
-                          isSelected
-                            ? st === 'Active'
-                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                              : st === 'On Leave'
-                              ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                              : 'bg-slate-700 text-white border-slate-700 shadow-xs'
-                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            st === 'Active'
-                              ? 'bg-emerald-300'
-                              : st === 'On Leave'
-                              ? 'bg-amber-300'
-                              : 'bg-slate-400'
+              {/* 4-Digit Login PIN & Status Toggle */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    4-Digit Login PIN *
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    required
+                    value={editEmpPin}
+                    onChange={(e) => setEditEmpPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="e.g. 1234"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold tracking-widest"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Staff login PIN for Mobile &amp; Desktop</span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 mb-1">
+                    Account Status *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 mt-0.5">
+                    {(['Active', 'Inactive'] as const).map((st) => {
+                      const isSelected = editEmpStatus === st;
+                      return (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => setEditEmpStatus(st)}
+                          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                            isSelected
+                              ? st === 'Active'
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                : 'bg-slate-700 text-white border-slate-700 shadow-xs'
+                              : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                           }`}
-                        />
-                        <span>{st}</span>
-                      </button>
-                    );
-                  })}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              st === 'Active' ? 'bg-emerald-300' : 'bg-slate-400'
+                            }`}
+                          />
+                          <span>{st}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -2307,6 +2513,394 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
                 <Printer className="w-4 h-4" />
                 <span>Print Official Payslip</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5B: OFFICIAL EMPLOYEE DOSSIER MODAL                                 */}
+      {/* ========================================================================= */}
+      {showDossierModal && selectedEmployee && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl w-full max-w-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="p-5 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-600 flex items-center justify-center text-white shadow-sm font-bold font-mono text-sm">
+                  {selectedEmployee.name
+                    .split(' ')
+                    .map((n) => n[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-black text-base sm:text-lg">
+                      Employee #{selectedEmployee.employeeNumber || extractSequenceNumber(selectedEmployee.id) || 1} • {selectedEmployee.name}
+                    </h3>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${getRoleBadge(
+                        selectedEmployee.role
+                      )}`}
+                    >
+                      {selectedEmployee.role}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        selectedEmployee.status === 'Active'
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      {selectedEmployee.status || 'Active'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5 font-mono">
+                    ID: {selectedEmployee.id} • Assigned Beat: {selectedEmployee.assigned_route}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDossierModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Dossier Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-xs font-sans">
+              {/* 1. Contact & Route Details Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                  <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-amber-600" />
+                    Contact &amp; Field Routing Particulars
+                  </span>
+                  <span className="font-mono text-[10px] text-slate-400">TENANT: {selectedEmployee.tenant_id}</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-white p-3 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Mobile / WhatsApp</span>
+                    <span className="font-mono font-bold text-slate-900 text-xs block mt-0.5">
+                      {selectedEmployee.phone || '—'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold block">National CNIC</span>
+                    <span className="font-mono font-bold text-slate-900 text-xs block mt-0.5">
+                      {selectedEmployee.cnic || selectedEmployee.cnic_number || '—'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Father's Name</span>
+                    <span className="font-medium text-slate-900 text-xs block mt-0.5">
+                      {selectedEmployee.father_name || '—'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Assigned Route / Depot</span>
+                    <span className="font-bold text-amber-900 text-xs block mt-0.5 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
+                      {selectedEmployee.assigned_route}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase font-bold block">Login Security PIN</span>
+                      <span className="font-mono text-xs font-black text-slate-900">
+                        {selectedEmployee.pin || '1234'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 font-mono text-slate-600">4-Digit</span>
+                  </div>
+
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase font-bold block">Van / Unit Assigned</span>
+                      <span className="font-bold text-slate-900 text-xs">
+                        {selectedEmployee.van_assigned || 'Depot Logistics'}
+                      </span>
+                    </div>
+                    <Truck className="w-4 h-4 text-slate-400" />
+                  </div>
+
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase font-bold block">Device Hardware IMEI</span>
+                      <span className="font-mono text-[11px] font-bold text-slate-800">
+                        {selectedEmployee.imei || 'Not Bound (Flexible)'}
+                      </span>
+                    </div>
+                    <Smartphone className="w-4 h-4 text-slate-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Compensation Breakdown */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                  Compensation &amp; Remuneration Package
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Base Monthly Salary</span>
+                    <span className="text-lg font-black text-slate-900 font-mono mt-0.5 block">
+                      {formatPKR(selectedEmployee.base_salary)}
+                    </span>
+                    <span className="text-[10px] text-slate-400">Fixed basic rate</span>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] text-emerald-700 uppercase font-bold block">
+                      Daily TA/DA Field Allowance
+                    </span>
+                    <span className="text-lg font-black text-emerald-700 font-mono mt-0.5 block">
+                      {formatPKR(selectedEmployee.ta_da_rate ?? selectedEmployee.daily_allowance_rate ?? 0)}
+                      <span className="text-xs font-normal text-slate-500"> / day</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">Accrued per verified field check-in</span>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] text-amber-700 uppercase font-bold block">
+                      Sales Commission Rate
+                    </span>
+                    <span className="text-lg font-black text-amber-800 font-mono mt-0.5 block">
+                      {selectedEmployee.commission_rate || 0}%
+                    </span>
+                    <span className="text-[10px] text-slate-400">On booked retailer net deliveries</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Financial Overview: Real Advances Taken (salary_advances) */}
+              {(() => {
+                const empAdvs = advancesList.filter((a) => a.employee_id === selectedEmployee.id);
+                const unsettledTotal = empAdvs
+                  .filter((a) => !a.is_settled)
+                  .reduce((sum, a) => sum + (a.amount || 0), 0);
+
+                return (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="w-3.5 h-3.5 text-rose-600" />
+                        <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                          Salary Advances (Peshgi Disbursed)
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-800">
+                          {empAdvs.length} Records
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono">
+                          Unsettled Balance:{' '}
+                          <strong className={unsettledTotal > 0 ? 'text-rose-600 font-bold' : 'text-emerald-700'}>
+                            {formatPKR(unsettledTotal)}
+                          </strong>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdvanceEmpId(selectedEmployee.id);
+                            setShowAdvanceModal(true);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] border border-rose-200 cursor-pointer"
+                        >
+                          + Disburse Advance
+                        </button>
+                      </div>
+                    </div>
+
+                    {empAdvs.length === 0 ? (
+                      <div className="py-5 text-center text-slate-400 bg-white rounded-xl border border-slate-200 font-medium">
+                        ✓ No salary advances (Peshgi) on record for {selectedEmployee.name}. Clean account.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-100 text-slate-700 text-[10px] uppercase font-bold border-b border-slate-200">
+                            <tr>
+                              <th className="py-2 px-3">Date</th>
+                              <th className="py-2 px-3">Voucher #</th>
+                              <th className="py-2 px-3">Reason</th>
+                              <th className="py-2 px-3">Payment Source</th>
+                              <th className="py-2 px-3 text-right">Amount</th>
+                              <th className="py-2 px-3 text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-mono">
+                            {empAdvs.map((adv, idx) => (
+                              <tr key={adv.id || idx} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-700 whitespace-nowrap">{adv.date}</td>
+                                <td className="py-2 px-3 font-bold text-slate-900 whitespace-nowrap">
+                                  {adv.voucher_no || `ADV-${idx + 1}`}
+                                </td>
+                                <td className="py-2 px-3 font-sans text-slate-800">{adv.reason}</td>
+                                <td className="py-2 px-3 font-sans text-[11px] text-slate-600 whitespace-nowrap">
+                                  {adv.payment_source}
+                                </td>
+                                <td className="py-2 px-3 text-right font-black text-rose-600 whitespace-nowrap">
+                                  {formatPKR(adv.amount)}
+                                </td>
+                                <td className="py-2 px-3 text-center whitespace-nowrap">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      adv.is_settled
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-rose-100 text-rose-800'
+                                    }`}
+                                  >
+                                    {adv.is_settled ? 'Settled' : 'Unpaid Advance'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* 4. Real Attendance History (staff_attendance) */}
+              {(() => {
+                const empAtts = attendanceList.filter((a) => a.employee_id === selectedEmployee.id);
+                const totalAllowanceAccrued = empAtts.reduce((sum, a) => sum + (a.allowance || 0), 0);
+
+                return (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                          Attendance Records &amp; TA/DA Accrual
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-800">
+                          {empAtts.length} Check-Ins
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono text-emerald-700 font-bold">
+                          Total TA/DA Earned: {formatPKR(totalAllowanceAccrued)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttendanceEmpId(selectedEmployee.id);
+                            setShowAttendanceModal(true);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] border border-emerald-200 cursor-pointer"
+                        >
+                          + Mark Today
+                        </button>
+                      </div>
+                    </div>
+
+                    {empAtts.length === 0 ? (
+                      <div className="py-5 text-center text-slate-400 bg-white rounded-xl border border-slate-200 font-medium">
+                        No daily attendance check-ins logged yet for {selectedEmployee.name}.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white max-h-52 overflow-y-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-100 text-slate-700 text-[10px] uppercase font-bold sticky top-0 border-b border-slate-200">
+                            <tr>
+                              <th className="py-2 px-3">Date</th>
+                              <th className="py-2 px-3">Status</th>
+                              <th className="py-2 px-3">Check-In Time</th>
+                              <th className="py-2 px-3 text-right">TA/DA Accrued</th>
+                              <th className="py-2 px-3">GPS / Depot Location</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-mono">
+                            {empAtts.map((att, idx) => (
+                              <tr key={att.id || idx} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-800 whitespace-nowrap">{att.date}</td>
+                                <td className="py-2 px-3 whitespace-nowrap">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      att.status === 'Present'
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : att.status === 'Half-Day'
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : att.status === 'Leave'
+                                        ? 'bg-sky-100 text-sky-800'
+                                        : 'bg-rose-100 text-rose-800'
+                                    }`}
+                                  >
+                                    {att.status}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-slate-700 whitespace-nowrap">
+                                  {att.check_in_time || '—'}
+                                </td>
+                                <td className="py-2 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
+                                  {formatPKR(att.allowance || 0)}
+                                </td>
+                                <td className="py-2 px-3 font-sans text-[11px] text-slate-500 whitespace-nowrap truncate max-w-xs">
+                                  {att.gps_location || 'Depot Gate 1'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Dossier Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+              <div className="text-[11px] text-slate-500 font-mono">
+                Verified HR Dossier • Auto-synced with IndexedDB &amp; Supabase
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDossierModal(false)}
+                  className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-100 cursor-pointer transition-colors"
+                >
+                  Close Dossier
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleOpenEditModal(selectedEmployee);
+                    setShowDossierModal(false);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Edit2 className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Edit Profile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-extrabold flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Dossier</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

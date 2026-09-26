@@ -78,13 +78,13 @@ export function normalizePhone(phone: string): string {
 export function mapEmployeeRoleToUserRole(role: string): UserRole {
   if (!role) return 'ORDER_BOOKER';
   const r = role.toLowerCase();
-  if (r.includes('admin') || r.includes('owner') || r.includes('director') || r.includes('manager')) {
+  if (r.includes('admin') || r.includes('owner') || r.includes('director') || r.includes('manager') || r.includes('office manager')) {
     return 'ADMIN';
   }
   if (r.includes('booker') || r.includes('sales') || r.includes('order')) {
     return 'ORDER_BOOKER';
   }
-  if (r.includes('driver') || r.includes('delivery') || r.includes('van helper') || r.includes('loader') || r.includes('mazdoor')) {
+  if (r.includes('driver') || r.includes('delivery') || r.includes('van helper') || r.includes('loader') || r.includes('mazdoor') || r.includes('office boy')) {
     return 'DELIVERY_DRIVER';
   }
   if (r.includes('warehouse') || r.includes('depot') || r.includes('grn') || r.includes('supervisor')) {

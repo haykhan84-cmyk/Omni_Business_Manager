@@ -854,12 +854,14 @@ export async function syncEmployeeToSupabase(emp: Employee): Promise<boolean> {
       name: emp.name,
       father_name: emp.father_name || null,
       phone: emp.phone,
-      cnic_number: emp.cnic_number || null,
+      cnic_number: emp.cnic_number || emp.cnic || null,
+      cnic: emp.cnic || emp.cnic_number || null,
       role: emp.role,
       assigned_route: emp.assigned_route,
       van_assigned: emp.van_assigned || null,
       base_salary: emp.base_salary,
       daily_allowance_rate: emp.daily_allowance_rate,
+      ta_da_rate: emp.ta_da_rate ?? emp.daily_allowance_rate ?? 0,
       commission_rate: emp.commission_rate,
       status: emp.status,
       imei: emp.imei || null,
@@ -868,18 +870,18 @@ export async function syncEmployeeToSupabase(emp: Employee): Promise<boolean> {
     };
     const { error } = await supabase.from('employees').upsert(payload, { onConflict: 'id' });
     if (error) {
-      // If remote table lacks 'pin' column, retry without pin column
-      if (error.message && error.message.toLowerCase().includes('pin')) {
-        const { pin, ...payloadWithoutPin } = payload;
-        const retry = await supabase.from('employees').upsert(payloadWithoutPin, { onConflict: 'id' });
-        if (retry.error) {
-          console.warn('[Supabase Employee Sync] Retry failed:', retry.error.message);
-          return false;
-        }
-        return true;
+      // If remote table lacks newer columns (e.g. pin, ta_da_rate, cnic), prune them and retry
+      const pruned = { ...payload };
+      if (error.message && error.message.toLowerCase().includes('pin')) delete pruned.pin;
+      if (error.message && error.message.toLowerCase().includes('ta_da_rate')) delete pruned.ta_da_rate;
+      if (error.message && error.message.toLowerCase().includes('cnic')) delete pruned.cnic;
+      
+      const retry = await supabase.from('employees').upsert(pruned, { onConflict: 'id' });
+      if (retry.error) {
+        console.warn('[Supabase Employee Sync] Retry failed:', retry.error.message);
+        return false;
       }
-      console.warn(`[Supabase Employee Sync] Warning:`, error.message);
-      return false;
+      return true;
     }
     return true;
   } catch (err: any) {

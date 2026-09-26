@@ -226,14 +226,18 @@ export interface GRNDocket {
 }
 
 export type EmployeeRole =
+  | 'Order Booker / Field Salesman'
   | 'Order Booker / Salesman'
+  | 'Delivery Van Driver'
   | 'Delivery Driver'
   | 'Van Helper / Loader (Mazdoor)'
-  | 'Recovery Officer'
+  | 'Warehouse Supervisor'
   | 'Cashier'
   | 'Accountant'
-  | 'Owner / Admin'
-  | 'Warehouse Supervisor';
+  | 'Office Manager'
+  | 'Office Boy'
+  | 'Recovery Officer'
+  | 'Owner / Admin';
 
 export interface Employee {
   id: string;
@@ -243,11 +247,13 @@ export interface Employee {
   father_name?: string;
   phone: string;
   cnic_number?: string;
+  cnic?: string;
   role: EmployeeRole;
   assigned_route: string;
   van_assigned?: string;
   base_salary: number;
   daily_allowance_rate: number;
+  ta_da_rate?: number; // Daily Field Allowance
   commission_rate: number;
   status: 'Active' | 'On Leave' | 'Resigned' | 'Inactive';
   imei?: string;
