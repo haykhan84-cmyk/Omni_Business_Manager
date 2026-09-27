@@ -283,6 +283,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   const [inspectorTab, setInspectorTab] = useState<'ledger' | 'orders' | 'skus' | 'notes'>('ledger');
 
   // Modals
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
@@ -351,6 +352,18 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
       setSelectedCustomer(customers[0]);
     }
   }, [customers]);
+
+  // Handle Escape key to close customer details modal or dropdown
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsCustomerModalOpen(false);
+        setIsColumnMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Load customer notes when selected customer changes
   useEffect(() => {
@@ -1404,82 +1417,80 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
         </div>
       </div>
 
-      {/* SPLIT HIGH-DENSITY WORKSPACE: MASTER DATA GRID (LEFT 7 COLS) + CUSTOMER 360 INSPECTOR (RIGHT 5 COLS) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN: MASTER DATA GRID */}
-        <div className="xl:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          {/* Header Bar with Purge Button & Column Visibility Toggle */}
-          <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-slate-800 uppercase tracking-wider">
-                Retailer Directory ({filteredCustomers.length} Outlets)
+      {/* 100% FULL-WIDTH RETAILER DIRECTORY */}
+      <div className="w-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+        {/* Header Bar with Purge Button & Column Visibility Toggle */}
+        <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-slate-800 uppercase tracking-wider">
+              Retailer Directory ({filteredCustomers.length} Outlets)
+            </span>
+            {selectedIds.size > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
+                {selectedIds.size} selected
               </span>
-              {selectedIds.size > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
-                  {selectedIds.size} selected
-                </span>
-              )}
-              {/* Prominent Red Purge Button */}
+            )}
+            {/* Prominent Red Purge Button */}
+            <button
+              type="button"
+              onClick={() => setShowPurgeModal(true)}
+              className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-[11px] flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer border border-rose-700"
+              title="Wipe mock entities and reset directory to 0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>[ 🗑️ PURGE ALL OUTLETS TO 0 ]</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 font-mono text-[11px] text-slate-500 flex-wrap">
+            {/* Columns Visibility Dropdown */}
+            <div className="relative" ref={columnMenuRef}>
               <button
                 type="button"
-                onClick={() => setShowPurgeModal(true)}
-                className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-[11px] flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer border border-rose-700"
-                title="Wipe mock entities and reset directory to 0"
+                onClick={() => setIsColumnMenuOpen((prev) => !prev)}
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs font-sans text-xs"
+                title="Toggle visible columns"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>[ 🗑️ PURGE ALL OUTLETS TO 0 ]</span>
+                <Columns className="w-3.5 h-3.5 text-slate-600" />
+                <span>Columns ▾</span>
               </button>
-            </div>
-
-            <div className="flex items-center gap-2 font-mono text-[11px] text-slate-500 flex-wrap">
-              {/* Columns Visibility Dropdown */}
-              <div className="relative" ref={columnMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsColumnMenuOpen((prev) => !prev)}
-                  className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs font-sans text-xs"
-                  title="Toggle visible columns"
-                >
-                  <Columns className="w-3.5 h-3.5 text-slate-600" />
-                  <span>Columns ▾</span>
-                </button>
-                {isColumnMenuOpen && (
-                  <div className="absolute left-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 space-y-1.5 text-xs text-slate-200">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 pb-1.5 border-b border-slate-800 flex items-center justify-between">
-                      <span>Column Visibility</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setVisibleColumns({
-                            customerId: true,
-                            name: true,
-                            route: true,
-                            category: true,
-                            creditLimit: true,
-                            limitPct: true,
-                            outstanding: true,
-                            aging: true,
-                            sync: true,
-                            actions: true,
-                          })
-                        }
-                        className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer underline decoration-dotted"
-                      >
-                        Show All
-                      </button>
-                    </div>
-                    {[
-                      { key: 'customerId', label: '1. Customer ID' },
-                      { key: 'name', label: '2. Name (Shop)' },
-                      { key: 'route', label: '3. Route' },
-                      { key: 'category', label: '4. Category / Channel' },
-                      { key: 'creditLimit', label: '5. Credit Limit' },
-                      { key: 'limitPct', label: '6. Discount %' },
-                      { key: 'outstanding', label: '7. Outstanding Balance' },
-                      { key: 'aging', label: '8. Aging Risk' },
-                      { key: 'sync', label: '9. Sync Status' },
-                      { key: 'actions', label: '10. Actions' },
-                    ].map((col) => (
+              {isColumnMenuOpen && (
+                <div className="absolute left-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 space-y-1.5 text-xs text-slate-200">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 pb-1.5 border-b border-slate-800 flex items-center justify-between">
+                    <span>Column Visibility</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleColumns({
+                          customerId: true,
+                          name: true,
+                          route: true,
+                          category: true,
+                          creditLimit: true,
+                          limitPct: true,
+                          outstanding: true,
+                          aging: true,
+                          sync: true,
+                          actions: true,
+                        })
+                      }
+                      className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer underline decoration-dotted"
+                    >
+                      Show All
+                    </button>
+                  </div>
+                  {[
+                    { key: 'customerId', label: '1. Customer ID' },
+                    { key: 'name', label: '2. Name (Shop Only)' },
+                    { key: 'route', label: '3. Route' },
+                    { key: 'category', label: '4. Category / Channel' },
+                    { key: 'creditLimit', label: '5. Credit Limit' },
+                    { key: 'limitPct', label: '6. Allowable Discount %' },
+                    { key: 'outstanding', label: '7. Outstanding Balance' },
+                    { key: 'aging', label: '8. Aging Risk' },
+                    { key: 'sync', label: '9. Sync Status' },
+                    { key: 'actions', label: '10. Actions' },
+                  ].map((col) => (
                       <label
                         key={col.key}
                         className="flex items-center gap-2.5 px-2 py-1 hover:bg-slate-800 rounded-lg cursor-pointer text-slate-200 select-none text-xs font-medium transition-colors"
@@ -1624,7 +1635,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                         className="flex items-center gap-1 cursor-pointer truncate pr-1"
                         title="Sort by Shop Name"
                       >
-                        <span className="truncate">2. Name</span>
+                        <span className="truncate">2. Name (Shop Only)</span>
                         {sortField === 'name' ? (
                           sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
@@ -1742,9 +1753,9 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                       <div
                         onClick={() => handleSort('limitPct')}
                         className="flex items-center justify-center gap-1 cursor-pointer truncate pr-1"
-                        title="Sort by Limit Utilization %"
+                        title="Sort by Allowable Discount / Limit %"
                       >
-                        <span className="truncate">6. Limit %</span>
+                        <span className="truncate">6. Allowable Discount %</span>
                         {sortField === 'limitPct' ? (
                           sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
@@ -1922,7 +1933,10 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                     return (
                       <tr
                         key={c.id}
-                        onClick={() => setSelectedCustomer(c)}
+                        onClick={() => {
+                          setSelectedCustomer(c);
+                          setIsCustomerModalOpen(true);
+                        }}
                         className={`cursor-pointer transition-colors ${
                           isSelected
                             ? 'bg-amber-50/80 border-l-4 border-amber-600'
@@ -2139,9 +2153,12 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                             <div className="flex items-center justify-center gap-1 truncate">
                               {/* View Customer 360 / Ledger */}
                               <button
-                                onClick={() => {
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setSelectedCustomer(c);
                                   setInspectorTab('ledger');
+                                  setIsCustomerModalOpen(true);
                                 }}
                                 className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-800 transition-colors cursor-pointer border border-transparent hover:border-amber-300 shrink-0"
                                 title="View Customer 360 / Ledger"
@@ -2151,7 +2168,11 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                               {/* Edit Customer */}
                               <button
-                                onClick={() => openEditModal(c)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditModal(c);
+                                }}
                                 className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer border border-transparent hover:border-blue-300 shrink-0"
                                 title="Edit Customer Details"
                               >
@@ -2161,7 +2182,11 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                               {/* Delete Customer with confirmation modal */}
                               {onDeleteCustomer && (
                                 <button
-                                  onClick={() => setCustomerToDelete(c)}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCustomerToDelete(c);
+                                  }}
                                   className="p-1.5 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer border border-transparent hover:border-rose-300 shrink-0"
                                   title="Delete Customer"
                                 >
@@ -2186,101 +2211,95 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: CUSTOMER 360° DEEP-DIVE INSPECTOR PANEL (Direct translation from code.html) */}
-        {selectedCustomer ? (
-          <div className="xl:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col space-y-4">
-            {/* Header Banner */}
-            <div className="p-5 bg-gradient-to-br from-slate-900 to-slate-800 text-white relative">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs font-black text-amber-300 bg-amber-950/80 px-2.5 py-0.5 rounded-lg border border-amber-600/40 shadow-xs">
-                      Shop #{extractShopSequence(selectedCustomer)} • {selectedCustomer.route || selectedCustomer.zone || 'Main Beat'}
+      {/* DEDICATED POPUP MODAL: CUSTOMER 360° DEEP-DIVE DETAILS */}
+      {isCustomerModalOpen && selectedCustomer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={() => setIsCustomerModalOpen(false)}
+        >
+          <div
+            className="max-w-4xl w-full bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-6 text-slate-100 max-h-[92vh] overflow-y-auto space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header: Shop #[ID] • [Shop Name] • [Route] • Close (✕) button */}
+            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs font-black text-amber-300 bg-amber-950/80 px-2.5 py-0.5 rounded-lg border border-amber-600/40 shadow-xs">
+                    Shop #{extractShopSequence(selectedCustomer)} • {selectedCustomer.route || selectedCustomer.zone || 'Main Beat'}
+                  </span>
+                  {selectedCustomer.channel_type && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                      {selectedCustomer.channel_type}
                     </span>
-                  </div>
-                  <h2 className="text-xl font-black text-white mt-1">
-                    {selectedCustomer.shopName}
-                  </h2>
-                  <p className="text-xs text-slate-300 mt-0.5">
-                    Proprietor: <strong className="text-white font-bold">{selectedCustomer.name}</strong> (Sole Proprietorship)
-                  </p>
-                </div>
-
-                <div>
+                  )}
                   {selectedCustomer.atlStatus === 'filer' || selectedCustomer.tax_status === 'Filer' ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
                       <ShieldCheck className="w-3 h-3 text-emerald-400" /> ATL Verified
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-400/40">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-400/40">
                       <AlertTriangle className="w-3 h-3 text-rose-400" /> Non-Filer
                     </span>
                   )}
                 </div>
+                <h2 className="text-2xl font-black text-white mt-2">
+                  {selectedCustomer.shopName || selectedCustomer.shop_name}
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Proprietor: <strong className="text-slate-200 font-bold">{selectedCustomer.name || selectedCustomer.owner_name}</strong> (Sole Proprietorship)
+                </p>
               </div>
 
-              {/* Quick Metrics Bar */}
-              <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-700/60 font-mono">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
-                    Assigned Credit Cap
-                  </span>
-                  <span className="text-sm font-bold text-slate-100">
-                    {formatPKR(selectedCustomer.creditLimit)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
-                    Current Outstandings
-                  </span>
-                  <span
-                    className={`text-sm font-black ${
-                      selectedCustomer.currentBalance > selectedCustomer.creditLimit * 0.9
-                        ? 'text-rose-400'
-                        : 'text-amber-400'
-                    }`}
-                  >
-                    {formatPKR(selectedCustomer.currentBalance)}
-                  </span>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsCustomerModalOpen(false)}
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors border border-slate-700 text-lg font-bold shrink-0 ml-3"
+                title="Close dialog (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* REAL-TIME OPERATIONS ACTION BAR */}
-            <div className="px-5 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {/* Quick Actions Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <button
+                type="button"
                 onClick={() => setIsPrintModalOpen(true)}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
+                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
                 title="Print subsidiary ledger statement"
               >
-                <Printer className="w-3.5 h-3.5 text-slate-600" />
+                <Printer className="w-3.5 h-3.5 text-slate-400" />
                 <span>Ledger PDF</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => openAdjustLimitModal(selectedCustomer)}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
+                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
                 title="Adjust credit limit and terms"
               >
-                <Sliders className="w-3.5 h-3.5 text-slate-600" />
+                <Sliders className="w-3.5 h-3.5 text-slate-400" />
                 <span>Adjust Ceiling</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => handleSendWhatsAppReminder(selectedCustomer)}
-                className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-emerald-200"
+                className="p-2.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-emerald-700/50"
                 title="Open WhatsApp pre-filled balance reminder"
               >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Remind WA</span>
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Remind WhatsApp</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => handleToggleCreditLock(selectedCustomer)}
-                className={`p-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                className={`p-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
                   selectedCustomer.status === 'credit_locked'
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
-                    : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border-rose-200'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'
+                    : 'bg-rose-950/70 hover:bg-rose-900/90 text-rose-300 border-rose-700/50'
                 }`}
                 title="Lock / Unlock customer credit"
               >
@@ -2291,7 +2310,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                   </>
                 ) : (
                   <>
-                    <Lock className="w-3.5 h-3.5 text-rose-600" />
+                    <Lock className="w-3.5 h-3.5 text-rose-400" />
                     <span>Credit Lock</span>
                   </>
                 )}
@@ -2299,103 +2318,161 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
               {onDeleteCustomer && (
                 <button
-                  onClick={() => setCustomerToDelete(selectedCustomer)}
-                  className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-rose-200"
+                  type="button"
+                  onClick={() => {
+                    setCustomerToDelete(selectedCustomer);
+                  }}
+                  className="p-2.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/70 text-rose-400 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-rose-800/40"
                   title="Permanently remove customer"
                 >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
                   <span>Delete</span>
                 </button>
               )}
             </div>
 
-            {/* PAKISTAN COMPLIANCE & LEGAL PASSPORT */}
-            <div className="px-5">
-              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-2 text-xs">
-                <div className="flex items-center justify-between text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200 pb-1.5">
-                  <span className="flex items-center gap-1.5 text-amber-800">
-                    <Building className="w-3.5 h-3.5" /> Pakistan Statutory Passport
+            {/* Quick Metrics Bar: Credit Cap vs Outstandings */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/70 p-4 rounded-xl border border-slate-800 font-mono text-xs">
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+                  Assigned Credit Cap
+                </span>
+                <span className="text-base font-bold text-slate-100">
+                  {formatPKR(selectedCustomer.creditLimit)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+                  Current Outstandings
+                </span>
+                <span
+                  className={`text-base font-black ${
+                    selectedCustomer.currentBalance > selectedCustomer.creditLimit * 0.9
+                      ? 'text-rose-400'
+                      : 'text-amber-400'
+                  }`}
+                >
+                  {formatPKR(selectedCustomer.currentBalance)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+                  Available Buffer
+                </span>
+                <span className="text-base font-bold text-emerald-400">
+                  {formatPKR(Math.max(0, (selectedCustomer.creditLimit || 0) - (selectedCustomer.currentBalance || 0)))}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+                  Settlement Terms
+                </span>
+                <span className="text-base font-bold text-slate-200">
+                  Net {selectedCustomer.credit_days || 15}d
+                </span>
+              </div>
+            </div>
+
+            {/* Statutory Details / Tax Status & Contact / Dispatch Pin */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              {/* Statutory Details */}
+              <div className="bg-slate-950/70 rounded-xl p-3.5 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase text-slate-400 border-b border-slate-800 pb-1.5">
+                  <span className="flex items-center gap-1.5 text-amber-400">
+                    <Building className="w-3.5 h-3.5" /> Statutory Details / Tax Status
                   </span>
                   <button
+                    type="button"
                     onClick={() => openEditModal(selectedCustomer)}
-                    className="text-amber-700 hover:underline flex items-center gap-1 lowercase text-xs"
+                    className="text-amber-400 hover:underline flex items-center gap-1 lowercase text-xs"
                   >
                     <Edit2 className="w-3 h-3" /> edit
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-slate-600">
+                <div className="grid grid-cols-2 gap-2 text-slate-300">
                   <div>
-                    <span className="text-slate-400 block text-[10px]">NTN Registration:</span>
-                    <span className="font-mono font-bold text-slate-800">
+                    <span className="text-slate-500 block text-[10px]">NTN Registration:</span>
+                    <span className="font-mono font-bold text-slate-200">
                       {selectedCustomer.ntn || '3948210-4'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px]">STRN Sales Tax:</span>
-                    <span className="font-mono font-bold text-slate-800">
+                    <span className="text-slate-500 block text-[10px]">STRN Sales Tax:</span>
+                    <span className="font-mono font-bold text-slate-200">
                       {selectedCustomer.strn || '17-00-3948-210-19'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px]">CNIC (Chief Signatory):</span>
-                    <span className="font-mono font-bold text-slate-800">
+                    <span className="text-slate-500 block text-[10px]">CNIC (Signatory):</span>
+                    <span className="font-mono font-bold text-slate-200">
                       {selectedCustomer.cnic || '15602-1234567-1'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px]">Standard WHT Rate:</span>
-                    <span className="font-bold text-emerald-700">
+                    <span className="text-slate-500 block text-[10px]">Standard WHT Rate:</span>
+                    <span className="font-bold text-emerald-400">
                       {selectedCustomer.atlStatus === 'filer' ? '0.5% (Filer Advantage)' : '10% (Non-Filer Penalty)'}
                     </span>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-500">Commercial Settlement:</span>
-                  <span className="font-bold text-slate-800 font-mono">
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400">Commercial Settlement:</span>
+                  <span className="font-bold text-slate-200 font-mono">
                     Net {selectedCustomer.credit_days || 15} Days • 1.5% Early Cash Rebate (&lt;7d)
                   </span>
                 </div>
               </div>
-            </div>
 
-            {/* GEOGRAPHIC & DISPATCH GEOFENCE PIN */}
-            <div className="px-5">
-              <div className="bg-slate-900 text-white rounded-xl p-3 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0">
-                    <MapPin className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-100 flex items-center gap-1.5">
-                      <span>Dispatch Coordinates:</span>
-                      <span className="font-mono text-amber-400 text-[11px]">
-                        {selectedCustomer.gps_coordinates || '34.7717° N, 72.3602° E'}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      {selectedCustomer.address || 'Main GT Road, Mingora Bazaar Sector'}
-                    </div>
-                  </div>
+              {/* Contact Info & Coordinates */}
+              <div className="bg-slate-950/70 rounded-xl p-3.5 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase text-slate-400 border-b border-slate-800 pb-1.5">
+                  <span className="flex items-center gap-1.5 text-amber-400">
+                    <MapPin className="w-3.5 h-3.5" /> Contact &amp; Dispatch Pin
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-800 text-emerald-400 border border-emerald-500/30">
+                    Geo-Tagged
+                  </span>
                 </div>
 
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-emerald-400 border border-emerald-500/30">
-                  Geo-Tagged
-                </span>
+                <div className="space-y-1.5 text-slate-300">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 text-[10px]">Phone Number:</span>
+                    <span className="font-mono font-bold text-slate-200">
+                      {selectedCustomer.phone || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 text-[10px]">WhatsApp Connected:</span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      {selectedCustomer.whatsapp_number || selectedCustomer.phone || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 text-[10px]">Dispatch Coordinates:</span>
+                    <span className="font-mono text-amber-300 text-[11px]">
+                      {selectedCustomer.gps_coordinates || '34.7717° N, 72.3602° E'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/80 truncate">
+                    {selectedCustomer.address || 'Main GT Road, Mingora Bazaar Sector'}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* UNIFIED 360-DEGREE TABS */}
-            <div className="px-5 flex-1 flex flex-col">
+            {/* UNIFIED 360 TABS */}
+            <div className="flex-1 flex flex-col pt-1">
               {/* Tab Navigation */}
-              <div className="flex items-center border-b border-slate-200 gap-4 text-xs font-bold">
+              <div className="flex items-center border-b border-slate-800 gap-4 text-xs font-bold">
                 <button
+                  type="button"
                   onClick={() => setInspectorTab('ledger')}
                   className={`pb-2.5 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
                     inspectorTab === 'ledger'
-                      ? 'border-amber-600 text-amber-700'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      ? 'border-amber-500 text-amber-400'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   <Receipt className="w-3.5 h-3.5" />
@@ -2403,11 +2480,12 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setInspectorTab('orders')}
                   className={`pb-2.5 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
                     inspectorTab === 'orders'
-                      ? 'border-amber-600 text-amber-700'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      ? 'border-amber-500 text-amber-400'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   <FileText className="w-3.5 h-3.5" />
@@ -2415,23 +2493,25 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setInspectorTab('skus')}
                   className={`pb-2.5 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
                     inspectorTab === 'skus'
-                      ? 'border-amber-600 text-amber-700'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      ? 'border-amber-500 text-amber-400'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   <TrendingUp className="w-3.5 h-3.5" />
-                  <span>Top Moving SKUs</span>
+                  <span>Top SKUs</span>
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setInspectorTab('notes')}
                   className={`pb-2.5 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
                     inspectorTab === 'notes'
-                      ? 'border-amber-600 text-amber-700'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      ? 'border-amber-500 text-amber-400'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
@@ -2444,40 +2524,40 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                 {/* 1. SUBSIDIARY LEDGER TAB */}
                 {inspectorTab === 'ledger' && (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between text-xs text-slate-500">
+                    <div className="flex items-center justify-between text-xs text-slate-400">
                       <span>Date-Wise Statement (Invoices &amp; Recoveries)</span>
-                      <span className="font-mono text-slate-700">
-                        Monthly Run Rate: <strong>{formatPKR(avgMonthlyPurchase)}</strong>
+                      <span className="font-mono text-slate-300">
+                        Monthly Run Rate: <strong className="text-white">{formatPKR(avgMonthlyPurchase)}</strong>
                       </span>
                     </div>
 
                     {selectedCustomerLedger.length === 0 ? (
-                      <div className="text-center py-8 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <div className="text-center py-8 text-xs text-slate-400 bg-slate-950/60 rounded-xl border border-dashed border-slate-800">
                         No transactions recorded for this outlet yet.
                       </div>
                     ) : (
-                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                         {selectedCustomerLedger.map((item, idx) => (
                           <div
                             key={idx}
-                            className="p-3 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-between text-xs"
+                            className="p-3 rounded-xl border border-slate-800 bg-slate-950/70 flex items-center justify-between text-xs"
                           >
                             <div>
                               <div className="flex items-center gap-2">
                                 <span
                                   className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded ${
                                     item.type === 'invoice'
-                                      ? 'bg-amber-100 text-amber-900'
-                                      : 'bg-emerald-100 text-emerald-900'
+                                      ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                                      : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                                   }`}
                                 >
                                   {item.ref}
                                 </span>
-                                <span className="font-bold text-slate-800">
+                                <span className="font-bold text-slate-200">
                                   {item.type === 'invoice' ? 'Delivery Invoice' : 'Cash Recovery'}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-500 mt-0.5 max-w-[220px] truncate">
+                              <p className="text-[11px] text-slate-400 mt-0.5 max-w-[280px] truncate">
                                 {item.description}
                               </p>
                               <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
@@ -2490,17 +2570,17 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                             <div className="text-right shrink-0 font-mono">
                               {item.type === 'invoice' ? (
                                 <>
-                                  <span className="font-bold text-slate-900 block">
+                                  <span className="font-bold text-white block">
                                     +{formatPKR(item.debit)}
                                   </span>
                                   {item.credit > 0 && (
-                                    <span className="text-[10px] text-emerald-700 block">
+                                    <span className="text-[10px] text-emerald-400 block">
                                       Spot Paid: {formatPKR(item.credit)}
                                     </span>
                                   )}
                                 </>
                               ) : (
-                                <span className="font-bold text-emerald-600 block">
+                                <span className="font-bold text-emerald-400 block">
                                   -{formatPKR(item.credit)}
                                 </span>
                               )}
@@ -2516,26 +2596,26 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                 {inspectorTab === 'orders' && (
                   <div className="space-y-2">
                     {orders.filter((o) => o.customerId === selectedCustomer.id).length === 0 ? (
-                      <div className="text-center py-8 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <div className="text-center py-8 text-xs text-slate-400 bg-slate-950/60 rounded-xl border border-dashed border-slate-800">
                         No sales orders on file for this retailer.
                       </div>
                     ) : (
-                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                         {orders
                           .filter((o) => o.customerId === selectedCustomer.id)
                           .map((o) => (
                             <div
                               key={o.id}
-                              className="p-3 rounded-xl border border-slate-200 bg-white flex items-center justify-between text-xs"
+                              className="p-3 rounded-xl border border-slate-800 bg-slate-950/70 flex items-center justify-between text-xs"
                             >
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <span className="font-mono font-bold text-amber-700">{o.orderNo}</span>
-                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700">
+                                  <span className="font-mono font-bold text-amber-400">{o.orderNo}</span>
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
                                     {o.status}
                                   </span>
                                 </div>
-                                <div className="text-[11px] text-slate-500 mt-1">
+                                <div className="text-[11px] text-slate-400 mt-1">
                                   {o.totalCartons} Cartons, {o.totalPieces} Pieces • {o.items.length} SKUs
                                 </div>
                                 <div className="text-[10px] text-slate-400 font-mono mt-0.5">
@@ -2545,15 +2625,16 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                               <div className="flex items-center gap-2">
                                 <div className="text-right font-mono">
-                                  <div className="font-bold text-slate-900">{formatPKR(o.netBill)}</div>
-                                  <div className="text-[10px] text-slate-500">
+                                  <div className="font-bold text-white">{formatPKR(o.netBill)}</div>
+                                  <div className="text-[10px] text-slate-400">
                                     {o.paymentType === 'cash' ? 'Cash Spot' : 'Credit Terms'}
                                   </div>
                                 </div>
                                 {onDeleteOrder && (
                                   <button
+                                    type="button"
                                     onClick={() => setOrderToDelete(o)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 transition-colors"
                                     title="Cancel & Delete Order"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -2567,27 +2648,27 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                   </div>
                 )}
 
-                {/* 3. TOP MOVING BRANDS / SKUS */}
+                {/* 3. TOP MOVING SKUS */}
                 {inspectorTab === 'skus' && (
                   <div className="space-y-2">
                     {selectedCustomerTopSkus.length === 0 ? (
-                      <div className="text-center py-8 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <div className="text-center py-8 text-xs text-slate-400 bg-slate-950/60 rounded-xl border border-dashed border-slate-800">
                         Order items will accumulate here automatically.
                       </div>
                     ) : (
-                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                         {selectedCustomerTopSkus.map((skuItem, i) => (
                           <div
                             key={i}
-                            className="p-2.5 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-between text-xs"
+                            className="p-2.5 rounded-xl border border-slate-800 bg-slate-950/70 flex items-center justify-between text-xs"
                           >
                             <div>
-                              <div className="font-bold text-slate-900">{skuItem.name}</div>
-                              <div className="text-[10px] font-mono text-slate-500">
+                              <div className="font-bold text-slate-200">{skuItem.name}</div>
+                              <div className="text-[10px] font-mono text-slate-400">
                                 {skuItem.sku} • {skuItem.cartons} Cartons + {skuItem.pieces} Pcs
                               </div>
                             </div>
-                            <div className="text-right font-mono font-bold text-slate-900">
+                            <div className="text-right font-mono font-bold text-amber-400">
                               {formatPKR(skuItem.totalSpend)}
                             </div>
                           </div>
@@ -2608,11 +2689,11 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                           value={newNoteText}
                           onChange={(e) => setNewNoteText(e.target.value)}
                           placeholder="Log field visit note, promise to pay, or credit decision..."
-                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-amber-500"
+                          className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                         />
                         <button
                           type="submit"
-                          className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                          className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
                         >
                           <Send className="w-3.5 h-3.5" />
                           <span>Log</span>
@@ -2626,7 +2707,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                         Loading CRM activity logs...
                       </div>
                     ) : notesList.length === 0 ? (
-                      <div className="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <div className="text-center py-6 text-xs text-slate-400 bg-slate-950/60 rounded-xl border border-dashed border-slate-800">
                         No field notes recorded yet. Add one above!
                       </div>
                     ) : (
@@ -2634,15 +2715,15 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                         {notesList.map((note, idx) => (
                           <div
                             key={note.id || idx}
-                            className="p-3 rounded-xl border border-slate-200 bg-white text-xs space-y-1 shadow-2xs"
+                            className="p-3 rounded-xl border border-slate-800 bg-slate-950/70 text-xs space-y-1"
                           >
                             <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                              <span className="font-bold text-amber-800">
+                              <span className="font-bold text-amber-400">
                                 {note.author || 'Commercial Rep'}
                               </span>
                               <span>{formatDateTime(note.note_date)}</span>
                             </div>
-                            <p className="text-slate-700 leading-relaxed">{note.text}</p>
+                            <p className="text-slate-300 leading-relaxed">{note.text}</p>
                           </div>
                         ))}
                       </div>
@@ -2652,45 +2733,26 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
               </div>
             </div>
 
-            {/* ENDPOINT EVENT LOG TELEM */}
-            <div className="px-5 pb-5">
-              <div className="bg-slate-900 rounded-xl p-3 text-[10px] font-mono text-slate-400 space-y-1">
-                <div className="flex justify-between items-center text-slate-300 font-bold border-b border-slate-800 pb-1">
-                  <span>LIVE ENDPOINT WEBHOOK AUDIT</span>
-                  <span className="text-emerald-400">ACK 200 OK</span>
-                </div>
-                <div className="truncate">
-                  POST /api/v2/retailer/shop-{extractShopSequence(selectedCustomer)}/sync • TTL: 0.04s • Multi-Region
-                </div>
-                <div className="text-slate-500 truncate">
-                  SHA-256: 8a92f0...c4e1 • Raast IBAN: PK92MEZN00010420088910
-                </div>
+            {/* ENDPOINT EVENT LOG TELEMETRY */}
+            <div className="bg-slate-950 rounded-xl p-3 text-[10px] font-mono text-slate-400 space-y-1 border border-slate-800">
+              <div className="flex justify-between items-center text-slate-300 font-bold border-b border-slate-800 pb-1">
+                <span>LIVE ENDPOINT WEBHOOK AUDIT</span>
+                <span className="text-emerald-400">ACK 200 OK</span>
+              </div>
+              <div className="truncate">
+                POST /api/v2/retailer/shop-{extractShopSequence(selectedCustomer)}/sync • TTL: 0.04s • Multi-Region
+              </div>
+              <div className="text-slate-400 truncate">
+                SHA-256: 8a92f0...c4e1 • Raast IBAN: PK92MEZN00010420088910
               </div>
             </div>
           </div>
-        ) : (
-          <div className="xl:col-span-5 bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 text-xs shadow-sm flex flex-col items-center justify-center space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-              <Users className="w-6 h-6" />
-            </div>
-            <div className="text-slate-800 font-bold text-sm">No Retailer Selected</div>
-            <p className="text-slate-500 max-w-xs leading-relaxed">
-              Select an account from the directory or click below to onboard a new retail customer with credit limits and beat assignment.
-            </p>
-            <button
-              onClick={openAddModal}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>+ Add Customer / Retailer</span>
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* MODAL 1: ADD / EDIT RETAILER KYC MODAL (Full Customer Master) */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
@@ -3009,7 +3071,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
       {/* MODAL 2: ADJUST CREDIT CEILING MODAL */}
       {isAdjustLimitModalOpen && selectedCustomer && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
@@ -3091,7 +3153,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
       {/* MODAL 3: PRINTABLE SUBSIDIARY LEDGER STATEMENT */}
       {isPrintModalOpen && selectedCustomer && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4 print:p-0 print:shadow-none">
             {/* Header / Actions */}
             <div className="flex items-center justify-between border-b pb-3 print:hidden">
@@ -3233,7 +3295,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
       {/* Safety Confirmation Modal for Customer Deletion */}
       {customerToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
             <div className="p-6">
               <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-4">
@@ -3295,7 +3357,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
       {/* Safety Confirmation Modal for Purging All Outlets to 0 */}
       {showPurgeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-rose-300 overflow-hidden">
             <div className="p-6">
               <div className="w-12 h-12 rounded-2xl bg-rose-100 border border-rose-300 text-rose-600 flex items-center justify-center mb-4">
