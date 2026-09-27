@@ -119,22 +119,62 @@ export function parseCustomerCsv(csvContent: string): {
     h.toLowerCase().trim().replace(/[\s_-]+/g, '')
   );
 
-  // Map column indices
-  const getColIdx = (aliases: string[]) => {
-    return headerRow.findIndex((col) =>
-      aliases.some((alias) => col === alias || col.includes(alias))
-    );
+  // Map column indices with exact-match precedence to prevent "shop#" matching "shop"
+  const getExactIdx = (aliases: string[]) => {
+    return headerRow.findIndex((col) => aliases.some((a) => col === a));
   };
 
-  const shopNumIdx = getColIdx(['shop#', 'shopno', 'shopnumber', 'shopnum', 'sr', 'srno', 'sno', 'shopid']);
-  const shopNameIdx = getColIdx(['shopname', 'shop', 'outlet', 'retailer', 'store']);
-  const ownerNameIdx = getColIdx(['ownername', 'owner', 'proprietor', 'contactname', 'name']);
-  const phoneIdx = getColIdx(['phone', 'mobile', 'contact', 'cell', 'tel']);
-  const whatsappIdx = getColIdx(['whatsapp', 'whatsappnumber', 'wa']);
-  const routeIdx = getColIdx(['route', 'beat', 'territory', 'marketroute']);
-  const creditLimitIdx = getColIdx(['creditlimit', 'limit', 'credit']);
-  const balanceIdx = getColIdx(['openingbalance', 'balance', 'outstanding', 'debt', 'currentbalance']);
-  const channelTypeIdx = getColIdx(['channeltype', 'channel', 'type', 'category']);
+  const getFuzzyIdx = (aliases: string[], exclusions: string[] = []) => {
+    return headerRow.findIndex((col) => {
+      if (exclusions.some((ex) => col.includes(ex))) return false;
+      return aliases.some((a) => col.includes(a));
+    });
+  };
+
+  const shopNumIdx = 
+    getExactIdx(['shop#', 'shopno', 'shopnumber', 'shopnum', 'sr', 'srno', 'sno', 'shopid', 'id', 'customerid', 'custid']) !== -1
+      ? getExactIdx(['shop#', 'shopno', 'shopnumber', 'shopnum', 'sr', 'srno', 'sno', 'shopid', 'id', 'customerid', 'custid'])
+      : getFuzzyIdx(['shop#', 'shopno', 'shopnum', 'shopid', 'sr#', 'srno', 'sno', 'customerid']);
+
+  const shopNameIdx = 
+    getExactIdx(['shopname', 'storename', 'outletname', 'retailername', 'clientname', 'accountname', 'shop', 'outlet', 'store', 'retailer']) !== -1
+      ? getExactIdx(['shopname', 'storename', 'outletname', 'retailername', 'clientname', 'accountname', 'shop', 'outlet', 'store', 'retailer'])
+      : getFuzzyIdx(['shopname', 'storename', 'outletname', 'retailername', 'shop', 'outlet', 'store', 'retailer'], ['#', 'no', 'num', 'id', 'sr']);
+
+  const ownerNameIdx = 
+    getExactIdx(['ownername', 'owner', 'proprietor', 'proprietorname', 'contactname', 'name', 'person']) !== -1
+      ? getExactIdx(['ownername', 'owner', 'proprietor', 'proprietorname', 'contactname', 'name', 'person'])
+      : getFuzzyIdx(['owner', 'proprietor', 'contactname', 'name'], ['shop', 'store', 'outlet', 'retailer']);
+
+  const phoneIdx = 
+    getExactIdx(['phone', 'mobile', 'contact', 'cell', 'tel', 'phoneno', 'mobileno']) !== -1
+      ? getExactIdx(['phone', 'mobile', 'contact', 'cell', 'tel', 'phoneno', 'mobileno'])
+      : getFuzzyIdx(['phone', 'mobile', 'cell', 'tel'], ['whatsapp']);
+
+  const whatsappIdx = 
+    getExactIdx(['whatsapp', 'whatsappnumber', 'whatsappno', 'wa', 'wanumber']) !== -1
+      ? getExactIdx(['whatsapp', 'whatsappnumber', 'whatsappno', 'wa', 'wanumber'])
+      : getFuzzyIdx(['whatsapp', 'wa']);
+
+  const routeIdx = 
+    getExactIdx(['route', 'routename', 'beat', 'territory', 'marketroute', 'zone']) !== -1
+      ? getExactIdx(['route', 'routename', 'beat', 'territory', 'marketroute', 'zone'])
+      : getFuzzyIdx(['route', 'beat', 'territory']);
+
+  const creditLimitIdx = 
+    getExactIdx(['creditlimit', 'limit', 'credit', 'creditceiling']) !== -1
+      ? getExactIdx(['creditlimit', 'limit', 'credit', 'creditceiling'])
+      : getFuzzyIdx(['creditlimit', 'credit']);
+
+  const balanceIdx = 
+    getExactIdx(['openingbalance', 'balance', 'outstanding', 'debt', 'currentbalance', 'khatta', 'arrears']) !== -1
+      ? getExactIdx(['openingbalance', 'balance', 'outstanding', 'debt', 'currentbalance', 'khatta', 'arrears'])
+      : getFuzzyIdx(['balance', 'outstanding', 'debt', 'arrears']);
+
+  const channelTypeIdx = 
+    getExactIdx(['channeltype', 'channel', 'category', 'type', 'customertype']) !== -1
+      ? getExactIdx(['channeltype', 'channel', 'category', 'type', 'customertype'])
+      : getFuzzyIdx(['channel', 'category']);
 
   const parsedRows: ParsedCustomerRow[] = [];
 
@@ -143,13 +183,28 @@ export function parseCustomerCsv(csvContent: string): {
     // Skip empty lines
     if (raw.every((field) => !field.trim())) continue;
 
-    const rawShopNum = shopNumIdx >= 0 ? raw[shopNumIdx] : '';
-    const parsedShopNum = rawShopNum ? extractSequenceNumber(rawShopNum) : undefined;
-    const shopName = shopNameIdx >= 0 ? (raw[shopNameIdx] || '').trim() : '';
-    const ownerName = ownerNameIdx >= 0 ? (raw[ownerNameIdx] || '').trim() : '';
+    let rawShopNum = shopNumIdx >= 0 ? raw[shopNumIdx] : '';
+    let shopName = shopNameIdx >= 0 ? (raw[shopNameIdx] || '').trim() : '';
+    let ownerName = ownerNameIdx >= 0 ? (raw[ownerNameIdx] || '').trim() : '';
     const phone = phoneIdx >= 0 ? (raw[phoneIdx] || '').trim() : '';
     const whatsapp = whatsappIdx >= 0 ? (raw[whatsappIdx] || '').trim() : phone;
     const route = routeIdx >= 0 ? (raw[routeIdx] || '').trim() : '';
+
+    // Smart Column Shift Auto-Correction:
+    // If shopName is purely a number (e.g., "1", "14") or code ("Shop #1"), and ownerName has store text,
+    // swap them so shopName is the actual store name!
+    if (/^(?:shop\s*#?)?\s*\d+$/i.test(shopName) && ownerName && !/^\d+$/.test(ownerName)) {
+      if (!rawShopNum) {
+        rawShopNum = shopName;
+      }
+      shopName = ownerName;
+      // If there's another text column right after ownerNameIdx, use that for ownerName
+      if (ownerNameIdx + 1 < raw.length && raw[ownerNameIdx + 1]?.trim() && !/^\d+$/.test(raw[ownerNameIdx + 1].trim())) {
+        ownerName = raw[ownerNameIdx + 1].trim();
+      }
+    }
+
+    const parsedShopNum = rawShopNum ? extractSequenceNumber(rawShopNum) : undefined;
     
     // Parse numeric fields cleanly without any currency symbols
     const cleanNumber = (val?: string): number => {

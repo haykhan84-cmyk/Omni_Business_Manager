@@ -83,6 +83,7 @@ export interface Customer {
   gps_coordinates?: string;
   aging_bucket?: '0-7 Days' | '8-15 Days' | '16-30 Days' | '30+ Days';
   created_at?: string;
+  synced?: boolean;
 }
 
 export interface CustomerNote {

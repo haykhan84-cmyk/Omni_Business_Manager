@@ -36,6 +36,10 @@ import {
   FileSpreadsheet,
   AlertCircle,
   Check,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Columns,
 } from 'lucide-react';
 import { Customer, Order, RoznamchaEntry, CustomerNote, ChannelType, TaxStatus } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
@@ -47,7 +51,7 @@ import {
   ACTIVE_TENANT_ID,
 } from '../../db/localDb';
 import { db } from '../../db';
-import { syncCustomersToSupabase } from '../../db/supabase';
+import { supabase, syncCustomersToSupabase } from '../../db/supabase';
 import {
   getNextSequenceNumber,
   getNextShopSequenceNumber,
@@ -71,8 +75,20 @@ interface DesktopCustomer360Props {
   onBulkAddCustomers?: (customers: Customer[]) => Promise<void>;
   onUpdateCustomer: (customer: Customer) => Promise<void>;
   onDeleteCustomer?: (customerId: string) => Promise<void>;
+  onPurgeAllCustomers?: () => Promise<void>;
   onDeleteOrder?: (orderId: string) => Promise<void>;
 }
+
+export type CustomerSortField =
+  | 'customerId'
+  | 'name'
+  | 'route'
+  | 'category'
+  | 'creditLimit'
+  | 'limitPct'
+  | 'outstanding'
+  | 'aging'
+  | 'sync';
 
 export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   customers,
@@ -82,6 +98,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   onBulkAddCustomers,
   onUpdateCustomer,
   onDeleteCustomer,
+  onPurgeAllCustomers,
   onDeleteOrder,
 }) => {
   // Navigation & Segmented Filters
@@ -96,6 +113,38 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   const [filterOverdue30, setFilterOverdue30] = useState(false);
   const [filterHighCredit, setFilterHighCredit] = useState(false);
   const [filterWhatsAppActive, setFilterWhatsAppActive] = useState(false);
+
+  // Sorting State
+  const [sortField, setSortField] = useState<CustomerSortField>('customerId');
+  const [sortAsc, setSortAsc] = useState<boolean>(true);
+
+  const handleSort = (field: CustomerSortField) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
+    }
+  };
+
+  // Column Visibility State (10 exact columns specification)
+  const [visibleColumns, setVisibleColumns] = useState({
+    customerId: true,
+    name: true,
+    route: true,
+    category: true,
+    creditLimit: true,
+    limitPct: true,
+    outstanding: true,
+    aging: true,
+    sync: true,
+    actions: true,
+  });
+  const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
+
+  // Data Purge State
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
 
   // Selected customer for 360 Deep-Dive
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
@@ -354,6 +403,99 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
     filterWhatsAppActive,
     searchQuery,
   ]);
+
+  // Sorted Customers List
+  const sortedCustomers = useMemo(() => {
+    const list = [...filteredCustomers];
+    list.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'customerId': {
+          const numA = extractShopSequence(a);
+          const numB = extractShopSequence(b);
+          cmp = numA - numB;
+          break;
+        }
+        case 'name': {
+          const nameA = (a.shopName || a.shop_name || '').toLowerCase();
+          const nameB = (b.shopName || b.shop_name || '').toLowerCase();
+          cmp = nameA.localeCompare(nameB);
+          break;
+        }
+        case 'route': {
+          const routeA = (a.route || '').toLowerCase();
+          const routeB = (b.route || '').toLowerCase();
+          cmp = routeA.localeCompare(routeB);
+          break;
+        }
+        case 'category': {
+          const catA = (a.channel_type || '').toLowerCase();
+          const catB = (b.channel_type || '').toLowerCase();
+          cmp = catA.localeCompare(catB);
+          break;
+        }
+        case 'creditLimit': {
+          cmp = (a.creditLimit || 0) - (b.creditLimit || 0);
+          break;
+        }
+        case 'limitPct': {
+          const pctA = a.creditLimit > 0 ? (a.currentBalance / a.creditLimit) * 100 : 0;
+          const pctB = b.creditLimit > 0 ? (b.currentBalance / b.creditLimit) * 100 : 0;
+          cmp = pctA - pctB;
+          break;
+        }
+        case 'outstanding': {
+          cmp = (a.currentBalance || 0) - (b.currentBalance || 0);
+          break;
+        }
+        case 'aging': {
+          const orderMap: Record<string, number> = {
+            Current: 1,
+            '8-15 Days': 2,
+            '16-30 Days': 3,
+            '30+ Days': 4,
+          };
+          const ageA = orderMap[getCustomerAging(a)] || 0;
+          const ageB = orderMap[getCustomerAging(b)] || 0;
+          cmp = ageA - ageB;
+          break;
+        }
+        case 'sync': {
+          const syncA = a.synced ? 1 : 0;
+          const syncB = b.synced ? 1 : 0;
+          cmp = syncA - syncB;
+          break;
+        }
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+    return list;
+  }, [filteredCustomers, sortField, sortAsc]);
+
+  // Handle Full Purge of All Outlets to 0
+  const handleExecutePurge = async () => {
+    setIsPurging(true);
+    try {
+      await db.customers.clear();
+      try {
+        await supabase.from('customers').delete().neq('id', '0');
+      } catch (err) {
+        console.warn('Supabase customer purge:', err);
+      }
+      if (onPurgeAllCustomers) {
+        await onPurgeAllCustomers();
+      }
+      setSelectedCustomer(null);
+      setSelectedIds(new Set());
+      setShowPurgeModal(false);
+      showToast('🗑️ All outlets successfully purged to 0!');
+    } catch (err) {
+      console.error('Purge error:', err);
+      showToast('Failed to purge outlets.');
+    } finally {
+      setIsPurging(false);
+    }
+  };
 
   // Transaction History for Selected Customer (Combined Ledger)
   const selectedCustomerLedger = useMemo(() => {
@@ -824,6 +966,18 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
           {/* Quick Action Controls */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* PROMINENT PURGE ALL OUTLETS TO 0 BUTTON */}
+            <button
+              type="button"
+              onClick={() => setShowPurgeModal(true)}
+              disabled={isPurging}
+              className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md border border-rose-700 active:scale-95 disabled:opacity-50"
+              title="Wipe all customer records from local database and Supabase"
+            >
+              <Trash2 className="w-4 h-4 text-white" />
+              <span>[ 🗑️ PURGE ALL OUTLETS TO 0 ]</span>
+            </button>
+
             <button
               onClick={() => {
                 setImportFileName('');
@@ -1129,9 +1283,9 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
         {/* LEFT COLUMN: MASTER DATA GRID */}
         <div className="xl:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          {/* Header Bar */}
-          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2">
+          {/* Header Bar with Purge Button & Column Visibility Toggle */}
+          <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-slate-800 uppercase tracking-wider">
                 Retailer Directory ({filteredCustomers.length} Outlets)
               </span>
@@ -1140,26 +1294,87 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                   {selectedIds.size} selected
                 </span>
               )}
+              {/* Prominent Red Purge Button */}
+              <button
+                type="button"
+                onClick={() => setShowPurgeModal(true)}
+                className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-[11px] flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer border border-rose-700"
+                title="Wipe mock entities and reset directory to 0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>[ 🗑️ PURGE ALL OUTLETS TO 0 ]</span>
+              </button>
             </div>
 
-            <div className="flex items-center gap-2.5 font-mono text-[11px] text-slate-500">
+            <div className="flex items-center gap-2 font-mono text-[11px] text-slate-500 flex-wrap">
+              {/* Columns Visibility Dropdown */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsColumnMenuOpen((prev) => !prev)}
+                  className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs font-sans text-xs"
+                  title="Toggle visible columns"
+                >
+                  <Columns className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Columns ▾</span>
+                </button>
+                {isColumnMenuOpen && (
+                  <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 p-2.5 z-40 space-y-1 text-xs">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1 border-b border-slate-100">
+                      Show / Hide Columns
+                    </div>
+                    {[
+                      { key: 'customerId', label: '1. Customer ID' },
+                      { key: 'name', label: '2. Name (Shop & Owner)' },
+                      { key: 'route', label: '3. Route' },
+                      { key: 'category', label: '4. Category / Channel' },
+                      { key: 'creditLimit', label: '5. Credit Limit' },
+                      { key: 'limitPct', label: '6. Limit %' },
+                      { key: 'outstanding', label: '7. Outstanding Balance' },
+                      { key: 'aging', label: '8. Aging Risk' },
+                      { key: 'sync', label: '9. Sync Status' },
+                      { key: 'actions', label: '10. Actions' },
+                    ].map((col) => (
+                      <label
+                        key={col.key}
+                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-slate-700 select-none font-medium"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns[col.key as keyof typeof visibleColumns]}
+                          onChange={(e) =>
+                            setVisibleColumns({
+                              ...visibleColumns,
+                              [col.key]: e.target.checked,
+                            })
+                          }
+                          className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
+                        />
+                        <span className="truncate">{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => setIsExportModalOpen(true)}
-                className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs font-sans text-xs"
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs font-sans text-xs"
                 title="Export customer list to CSV"
               >
                 <Download className="w-3.5 h-3.5 text-slate-600" />
-                <span>📤 Export Customers (CSV)</span>
+                <span>📤 Export (CSV)</span>
               </button>
+
               <span className="hidden sm:inline text-slate-300">•</span>
-              <span>
-                Exposure: <strong className="text-slate-900">{formatPKR(filteredCustomers.reduce((a, b) => a + b.currentBalance, 0))}</strong>
+              <span className="whitespace-nowrap font-sans font-medium text-slate-600 text-xs">
+                Debt: <strong className="text-slate-900 font-bold">{formatPKR(filteredCustomers.reduce((a, b) => a + (b.currentBalance || 0), 0))}</strong>
               </span>
             </div>
           </div>
 
-          {/* Table */}
+          {/* Table with Exact 10 Columns & Column Sorting */}
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
@@ -1178,24 +1393,175 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                           setSelectedIds(new Set());
                         }
                       }}
-                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
                     />
                   </th>
-                  <th className="p-3 whitespace-nowrap">Account &amp; Entity</th>
-                  <th className="p-3 whitespace-nowrap">Zone / Route</th>
-                  <th className="p-3 whitespace-nowrap">NTN / ATL</th>
-                  <th className="p-3 whitespace-nowrap">Category</th>
-                  <th className="p-3 text-right whitespace-nowrap">Limit (PKR)</th>
-                  <th className="p-3 text-right whitespace-nowrap">Outstanding</th>
-                  <th className="p-3 text-center whitespace-nowrap">Aging Risk</th>
-                  <th className="p-3 text-center whitespace-nowrap">Sync</th>
-                  <th className="p-3 text-center whitespace-nowrap">Action</th>
+
+                  {/* Column 1: Customer ID */}
+                  {visibleColumns.customerId && (
+                    <th
+                      onClick={() => handleSort('customerId')}
+                      className="p-3 whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>1. Customer ID</span>
+                        {sortField === 'customerId' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Column 2: Name */}
+                  {visibleColumns.name && (
+                    <th
+                      onClick={() => handleSort('name')}
+                      className="p-3 whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>2. Name</span>
+                        {sortField === 'name' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Column 3: Route */}
+                  {visibleColumns.route && (
+                    <th
+                      onClick={() => handleSort('route')}
+                      className="p-3 whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>3. Route</span>
+                        {sortField === 'route' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Column 4: Category / Channel */}
+                  {visibleColumns.category && (
+                    <th
+                      onClick={() => handleSort('category')}
+                      className="p-3 whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>4. Category / Channel</span>
+                        {sortField === 'category' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Column 5: Credit Limit */}
+                  {visibleColumns.creditLimit && (
+                    <th
+                      onClick={() => handleSort('creditLimit')}
+                      className="p-3 text-right whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <span>5. Credit Limit</span>
+                        {sortField === 'creditLimit' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Column 6: Limit % */}
+                  {visibleColumns.limitPct && (
+                    <th
+                      onClick={() => handleSort('limitPct')}
+                      className="p-3 text-center whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>6. Limit %</span>
+                        {sortField === 'limitPct' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Columns 7 & 8: Outstanding Balance */}
+                  {visibleColumns.outstanding && (
+                    <th
+                      onClick={() => handleSort('outstanding')}
+                      className="p-3 text-right whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <span>7. Outstanding Balance</span>
+                        {sortField === 'outstanding' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Column 9: Aging Risk */}
+                  {visibleColumns.aging && (
+                    <th
+                      onClick={() => handleSort('aging')}
+                      className="p-3 text-center whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>8. Aging Risk</span>
+                        {sortField === 'aging' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Column 10: Sync Status */}
+                  {visibleColumns.sync && (
+                    <th
+                      onClick={() => handleSort('sync')}
+                      className="p-3 text-center whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>9. Sync Status</span>
+                        {sortField === 'sync' ? (
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                  )}
+
+                  {/* Column 11: Actions */}
+                  {visibleColumns.actions && (
+                    <th className="p-3 text-center whitespace-nowrap select-none">
+                      <span>10. Actions</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredCustomers.length === 0 ? (
+                {sortedCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-12 text-center">
+                    <td colSpan={11} className="p-12 text-center">
                       <div className="flex flex-col items-center justify-center space-y-3">
                         <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
                           <Users className="w-6 h-6" />
@@ -1231,15 +1597,14 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((c, idx) => {
+                  sortedCustomers.map((c, idx) => {
                     const isSelected = selectedCustomer?.id === c.id;
                     const isChecked = selectedIds.has(c.id);
                     const aging = getCustomerAging(c);
                     const utilPct =
                       c.creditLimit > 0
-                        ? Math.min(100, Math.round((c.currentBalance / c.creditLimit) * 100))
+                        ? Math.min(100, Math.round(((c.currentBalance || 0) / c.creditLimit) * 100))
                         : 0;
-                    const isOver = c.status === 'credit_locked' || utilPct >= 90;
 
                     return (
                       <tr
@@ -1265,175 +1630,161 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                               else next.delete(c.id);
                               setSelectedIds(next);
                             }}
-                            className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                            className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
                           />
                         </td>
 
-                        {/* Account & Entity */}
-                        <td className="p-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-mono font-bold text-[11px] shadow-2xs">
+                        {/* Column 1: Customer ID */}
+                        {visibleColumns.customerId && (
+                          <td className="p-3 whitespace-nowrap font-mono font-bold text-slate-800">
+                            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 text-xs shadow-2xs">
                               Shop #{extractShopSequence(c, idx)}
                             </span>
-                            <span className="font-bold text-slate-900">{c.shopName}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                            <span className="font-semibold text-slate-700">Proprietor: {c.name}</span>
-                            {c.phone && (
-                              <>
-                                <span>•</span>
-                                <span className="font-mono text-slate-500">{c.phone}</span>
-                              </>
-                            )}
-                            {c.channel_type && (
-                              <>
-                                <span>•</span>
-                                <span className="text-slate-500">{c.channel_type}</span>
-                              </>
-                            )}
-                          </div>
-                        </td>
+                          </td>
+                        )}
 
-                        {/* Zone / Route */}
-                        <td className="p-3 whitespace-nowrap text-slate-600">
-                          <div className="font-semibold text-slate-800">{c.zone || c.route}</div>
-                          <div className="text-[10px] text-slate-400">{c.route}</div>
-                        </td>
+                        {/* Column 2: Name */}
+                        {visibleColumns.name && (
+                          <td className="p-3 whitespace-nowrap">
+                            <div className="font-bold text-slate-900 text-xs">
+                              {c.shopName || c.shop_name || 'Retail Outlet'}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {c.name || c.owner_name || 'Proprietor'}
+                            </div>
+                          </td>
+                        )}
 
-                        {/* NTN / ATL */}
-                        <td className="p-3 whitespace-nowrap">
-                          <div className="font-mono text-[11px] text-slate-700">
-                            {c.ntn || c.cnic || 'Pending Reg.'}
-                          </div>
-                          <div className="mt-0.5">
-                            {c.atlStatus === 'filer' || c.tax_status === 'Filer' ? (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                                ATL Active
+                        {/* Column 3: Route */}
+                        {visibleColumns.route && (
+                          <td className="p-3 whitespace-nowrap text-xs text-slate-700 font-semibold">
+                            {c.route}
+                          </td>
+                        )}
+
+                        {/* Column 4: Category / Channel */}
+                        {visibleColumns.category && (
+                          <td className="p-3 whitespace-nowrap">
+                            <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                              {c.channel_type || 'General Store'}
+                            </span>
+                          </td>
+                        )}
+
+                        {/* Column 5: Credit Limit */}
+                        {visibleColumns.creditLimit && (
+                          <td className="p-3 text-right whitespace-nowrap font-mono text-xs font-semibold text-slate-700">
+                            {(c.creditLimit || 0).toLocaleString('en-PK')}
+                          </td>
+                        )}
+
+                        {/* Column 6: Limit % */}
+                        {visibleColumns.limitPct && (
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-black border ${
+                                utilPct >= 100 || c.status === 'credit_locked'
+                                  ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                  : utilPct >= 71
+                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                  : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              }`}
+                            >
+                              {utilPct >= 100 || c.status === 'credit_locked'
+                                ? `${Math.min(utilPct, 100)}% Locked`
+                                : `${utilPct}% Used`}
+                            </span>
+                          </td>
+                        )}
+
+                        {/* Columns 7 & 8: Outstanding Balance */}
+                        {visibleColumns.outstanding && (
+                          <td className="p-3 text-right whitespace-nowrap font-mono text-xs font-bold text-slate-900">
+                            {(c.currentBalance || 0).toLocaleString('en-PK')}
+                          </td>
+                        )}
+
+                        {/* Column 9: Aging Risk */}
+                        {visibleColumns.aging && (
+                          <td className="p-3 text-center whitespace-nowrap">
+                            {aging === '30+ Days' || c.status === 'credit_locked' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200">
+                                <Lock className="w-2.5 h-2.5" /> 30+d (Locked)
+                              </span>
+                            ) : aging === '16-30 Days' || aging === '8-15 Days' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                15d (Due)
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-800">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-                                Non-Filer (+10%)
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                7d (Normal)
                               </span>
                             )}
-                          </div>
-                        </td>
+                          </td>
+                        )}
 
-                        {/* Category */}
-                        <td className="p-3 whitespace-nowrap">
-                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                            {c.channel_type || 'Supermarket'}
-                          </span>
-                        </td>
+                        {/* Column 10: Sync Status */}
+                        {visibleColumns.sync && (
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <div
+                              className="flex items-center justify-center gap-1.5"
+                              title={c.synced !== false ? 'Live Synced to Cloud DB' : 'Offline / Pending Sync'}
+                            >
+                              <span
+                                className={`w-2.5 h-2.5 rounded-full ${
+                                  c.synced !== false
+                                    ? 'bg-emerald-500 shadow-2xs shadow-emerald-400'
+                                    : 'bg-amber-500 animate-pulse'
+                                }`}
+                              />
+                              <span className="text-[10px] font-bold text-slate-500">
+                                {c.synced !== false ? 'Synced' : 'Pending'}
+                              </span>
+                            </div>
+                          </td>
+                        )}
 
-                        {/* Credit Limit */}
-                        <td className="p-3 text-right font-mono text-slate-600 whitespace-nowrap">
-                          {formatPKR(c.creditLimit)}
-                        </td>
-
-                        {/* Outstanding Balance */}
-                        <td className="p-3 text-right whitespace-nowrap font-mono">
-                          <div
-                            className={`font-bold ${
-                              isOver ? 'text-rose-600' : 'text-slate-900'
-                            }`}
+                        {/* Column 11: Actions */}
+                        {visibleColumns.actions && (
+                          <td
+                            className="p-3 text-center whitespace-nowrap"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            {formatPKR(c.currentBalance)}
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            {utilPct}% Used
-                          </div>
-                        </td>
-
-                        {/* Aging Risk */}
-                        <td className="p-3 text-center whitespace-nowrap">
-                          {aging === '30+ Days' || c.status === 'credit_locked' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200">
-                              <Lock className="w-2.5 h-2.5" /> 30+d (Locked)
-                            </span>
-                          ) : aging === '16-30 Days' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
-                              22d (Warning)
-                            </span>
-                          ) : aging === '8-15 Days' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
-                              14d (Good)
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                              7d (Normal)
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Connectors / Sync */}
-                        <td className="p-3 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1 text-slate-400">
-                            <span
-                              title="WhatsApp Notification Ready"
-                              className={`w-2 h-2 rounded-full ${
-                                c.whatsapp_number || c.phone ? 'bg-emerald-500' : 'bg-slate-300'
-                              }`}
-                            />
-                            <span
-                              title="1Link Raast Verified"
-                              className="w-2 h-2 rounded-full bg-blue-500"
-                            />
-                          </div>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="p-3 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleCreditLock(c);
-                              }}
-                              className={`p-1 rounded cursor-pointer transition-colors ${
-                                c.status === 'credit_locked'
-                                  ? 'hover:bg-emerald-100 text-emerald-600'
-                                  : 'hover:bg-rose-100 text-rose-600'
-                              }`}
-                              title={
-                                c.status === 'credit_locked'
-                                  ? 'Unlock Customer Credit'
-                                  : 'Freeze Customer Credit (Lock)'
-                              }
-                            >
-                              {c.status === 'credit_locked' ? (
-                                <Unlock className="w-3.5 h-3.5" />
-                              ) : (
-                                <Lock className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedCustomer(c);
-                              }}
-                              className="p-1 rounded hover:bg-slate-200 text-slate-600 cursor-pointer"
-                              title="Inspect Customer 360"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-amber-700" />
-                            </button>
-
-                            {onDeleteCustomer && (
+                            <div className="flex items-center justify-center gap-1.5">
+                              {/* View Customer 360 / Ledger */}
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setCustomerToDelete(c);
+                                onClick={() => {
+                                  setSelectedCustomer(c);
+                                  setInspectorTab('ledger');
                                 }}
-                                className="p-1 rounded hover:bg-rose-100 text-slate-400 hover:text-rose-600 cursor-pointer transition-colors"
-                                title="Delete Customer"
+                                className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-800 transition-colors cursor-pointer border border-transparent hover:border-amber-300"
+                                title="View Customer 360 / Ledger"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Eye className="w-3.5 h-3.5" />
                               </button>
-                            )}
-                          </div>
-                        </td>
+
+                              {/* Edit Customer */}
+                              <button
+                                onClick={() => openEditModal(c)}
+                                className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer border border-transparent hover:border-blue-300"
+                                title="Edit Customer Details"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Delete Customer with confirmation modal */}
+                              {onDeleteCustomer && (
+                                <button
+                                  onClick={() => setCustomerToDelete(c)}
+                                  className="p-1.5 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer border border-transparent hover:border-rose-300"
+                                  title="Delete Customer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -2550,6 +2901,54 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                 className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
               >
                 Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Confirmation Modal for Purging All Outlets to 0 */}
+      {showPurgeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-rose-300 overflow-hidden">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 border border-rose-300 text-rose-600 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <h3 className="text-lg font-black text-rose-950 leading-tight">
+                ⚠️ Purge All Retailer Outlets to 0?
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                This will permanently delete <strong className="text-rose-900 font-bold">ALL {customers.length} retail outlets</strong> from local IndexedDB and cloud storage, resetting your directory to 0 outlets.
+              </p>
+              <div className="mt-3 p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-rose-900">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Irreversible Action</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  All customer records, outstanding balances, and credit limits will be purged. You will be able to onboard clean outlets fresh via <strong>+ Add Retailer</strong> or <strong>Bulk Import (CSV)</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isPurging}
+                onClick={() => setShowPurgeModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isPurging}
+                onClick={handleExecutePurge}
+                className="px-5 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isPurging ? 'Purging...' : 'Confirm Purge to 0'}</span>
               </button>
             </div>
           </div>

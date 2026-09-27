@@ -324,7 +324,7 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
           </div>
         )}
 
-        {filteredCustomers.map((cust) => {
+        {filteredCustomers.map((cust, idx) => {
           const utilPct =
             cust.creditLimit > 0
               ? Math.min(100, Math.round((cust.currentBalance / cust.creditLimit) * 100))

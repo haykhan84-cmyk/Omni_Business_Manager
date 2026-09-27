@@ -18,6 +18,7 @@ import { getStoredSession, clearStoredSession } from './services/authService';
 import {
   checkSupabaseConnection,
   fetchSupabaseLiveCounts,
+  supabase,
   syncOrderToSupabase,
   syncRoznamchaEntryToSupabase,
   syncProductToSupabase,
@@ -525,6 +526,21 @@ export default function App() {
     await refreshData();
   };
 
+  const handlePurgeAllCustomers = async () => {
+    await db.customers.clear();
+    try {
+      await supabase.from('customers').delete().neq('id', '0');
+    } catch (err) {
+      console.warn('Supabase customer purge error:', err);
+    }
+    setCustomers([]);
+    if (isOnline) {
+      fetchSupabaseLiveCounts().then(setSupabaseCounts).catch(() => {});
+      setLastSyncedAt(new Date().toISOString());
+    }
+    await refreshData();
+  };
+
   // 4. Product Handlers
   const handleAddProduct = async (prod: Omit<Product, 'id'>) => {
     const newProd: Product = {
@@ -1021,6 +1037,7 @@ export default function App() {
             onBulkAddCustomers={handleBulkAddCustomers}
             onUpdateCustomer={handleUpdateCustomer}
             onDeleteCustomer={handleDeleteCustomer}
+            onPurgeAllCustomers={handlePurgeAllCustomers}
             onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
             onDeleteOrder={handleDeleteOrder}
             onReceiveStock={handleReceiveStock}
