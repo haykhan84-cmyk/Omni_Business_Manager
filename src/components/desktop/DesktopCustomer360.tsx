@@ -807,15 +807,15 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                 Enterprise CRM &amp; Distributor 360
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
-                PAK-LATAM-GCC HUB
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300">
+                DISTRIBUTION NETWORK
               </span>
             </div>
 
             <p className="text-xs text-slate-500 mt-1 max-w-3xl leading-relaxed">
-              Pakistan National &amp; Cross-Border Accounts Governance •{' '}
+              FMCG &amp; Pharma Retail Accounts Governance •{' '}
               <strong className="text-slate-700 font-bold">{customers.length} Active Entities</strong> •
-              Currency: PKR (Rs.) &amp; Multi-Currency Ledger (USD/AED) • FBR Active Taxpayer List (ATL):{' '}
+              Currency: PKR (Rs.) • FBR Active Taxpayer List (ATL):{' '}
               <span className="text-emerald-700 font-bold">{filerPercentage}% Verified</span>
             </p>
           </div>
@@ -1198,17 +1198,33 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                         <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
                           <Users className="w-6 h-6" />
                         </div>
-                        <div className="text-slate-900 font-bold text-sm">No Retailers Registered</div>
-                        <p className="text-xs text-slate-500 max-w-sm">
-                          Your customer directory is ready for real shops and outlets. Click below to add your first retailer.
+                        <div className="text-slate-900 font-black text-base">0 Shops Found</div>
+                        <p className="text-xs text-slate-600 max-w-md font-medium">
+                          0 Shops Found. Click 'Bulk Import (CSV)' or '+ Add Retailer' to onboard your outlets.
                         </p>
-                        <button
-                          onClick={openAddModal}
-                          className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
-                        >
-                          <UserPlus className="w-4 h-4" />
-                          <span>+ Add Customer / Retailer</span>
-                        </button>
+                        <div className="flex items-center gap-2.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImportFileName('');
+                              setImportParsedRows([]);
+                              setImportSummary({ total: 0, valid: 0, invalid: 0 });
+                              setIsImportModalOpen(true);
+                            }}
+                            className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                          >
+                            <Upload className="w-4 h-4 text-amber-700" />
+                            <span>📥 Bulk Import (CSV)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={openAddModal}
+                            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                            <span>+ Add Retailer</span>
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>

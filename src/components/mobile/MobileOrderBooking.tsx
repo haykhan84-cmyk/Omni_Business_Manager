@@ -30,6 +30,7 @@ interface MobileOrderBookingProps {
   orders?: Order[];
   currentUser?: UserAccount;
   onSaveOrder: (order: Order, cashCollected: number) => Promise<void>;
+  onBulkAddCustomers?: (customers: Customer[]) => Promise<void>;
   isOnline: boolean;
 }
 
@@ -39,6 +40,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
   orders = [],
   currentUser,
   onSaveOrder,
+  onBulkAddCustomers,
   isOnline,
 }) => {
   // Routes & Beats loaded from local Dexie database
@@ -353,10 +355,10 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
   };
 
   return (
-    <div className="flex flex-col space-y-4 pb-24">
+    <div className="w-full flex flex-col space-y-4 pb-36 overflow-x-hidden">
       {/* Zero Sale Success Alert */}
       {zeroSaleSuccessMsg && (
-        <div className="bg-amber-900 text-amber-100 p-3 rounded-xl border border-amber-700 text-xs flex items-center justify-between">
+        <div className="bg-amber-900 text-amber-100 p-3.5 rounded-xl border border-amber-700 text-xs flex items-center justify-between shadow-md">
           <span>{zeroSaleSuccessMsg}</span>
           <button onClick={() => setZeroSaleSuccessMsg(null)}>
             <X className="w-4 h-4" />
@@ -364,12 +366,22 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
         </div>
       )}
 
+      {/* 0 Shops Found Empty Banner */}
+      {customers.length === 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-center space-y-2 shadow-2xs w-full">
+          <div className="text-slate-900 font-black text-sm">0 Shops Found</div>
+          <p className="text-xs text-slate-600 font-medium">
+            0 Shops Found. Click 'Bulk Import (CSV)' or '+ Add Retailer' to onboard your outlets.
+          </p>
+        </div>
+      )}
+
       {/* Route & Shop Selector Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm text-white">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm text-white w-full">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {/* Route Selector */}
           <div>
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between mb-1.5">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-amber-500" />
                 Salesman Beat / Route
@@ -383,7 +395,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
             <select
               value={selectedRouteName}
               onChange={(e) => setSelectedRouteName(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
+              className="w-full min-h-[48px] h-12 bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
             >
               {routeOptions.map((r) => (
                 <option key={r.id} value={r.name}>
@@ -395,7 +407,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
 
           {/* Shop Selector */}
           <div>
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between mb-1.5">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 <Store className="w-3.5 h-3.5 text-emerald-400" />
                 Drop Sequence (Shops)
@@ -412,7 +424,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
             <select
               value={selectedCustomerId}
               onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
+              className="w-full min-h-[48px] h-12 bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
             >
               {routeCustomers.length === 0 ? (
                 <option value="">No outlets found on this route</option>
@@ -572,25 +584,25 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
       )}
 
       {/* Product Search & Category Filters */}
-      <div className="space-y-2">
-        <div className="relative">
+      <div className="space-y-2 w-full">
+        <div className="relative w-full">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Search SKU, Brand, Product Name, Barcode..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-amber-500 shadow-sm"
+            className="w-full min-h-[48px] h-12 bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-amber-500 shadow-sm"
           />
         </div>
 
         {/* Category Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs w-full">
           {categories.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded-full whitespace-nowrap font-semibold cursor-pointer transition-all ${
+              className={`min-h-[36px] px-3.5 py-1.5 rounded-full whitespace-nowrap font-semibold cursor-pointer transition-all ${
                 selectedCategory === cat
                   ? 'bg-amber-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
@@ -603,9 +615,9 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
       </div>
 
       {/* Product List Cards */}
-      <div className="space-y-3">
+      <div className="space-y-3 w-full">
         {filteredProducts.length === 0 && (
-          <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center space-y-2">
+          <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center space-y-2 w-full">
             <Package className="w-8 h-8 text-slate-300 mx-auto" />
             <div className="text-sm font-bold text-slate-800">No Products Found</div>
             <p className="text-xs text-slate-500 max-w-xs mx-auto">
@@ -632,7 +644,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
           return (
             <div
               key={product.id}
-              className={`bg-white rounded-2xl p-3.5 border transition-all shadow-sm ${
+              className={`bg-white rounded-2xl p-4 border transition-all shadow-sm w-full ${
                 isSelected
                   ? 'border-amber-500 ring-2 ring-amber-500/20 shadow-md'
                   : 'border-slate-200 hover:border-slate-300'
@@ -673,56 +685,60 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                 </div>
               </div>
 
-              {/* Steppers for Cartons and Pieces */}
-              <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
+              {/* Steppers for Cartons and Pieces (Touch-Friendly 48px min) */}
+              <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2.5">
                 {/* Cartons Stepper */}
-                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80 flex flex-col justify-between">
-                  <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 mb-1">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 flex flex-col justify-between">
+                  <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 mb-1.5">
                     <span>Cartons</span>
                     <span className="font-mono text-slate-400 whitespace-nowrap">({product.packSize}x)</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <button
+                      type="button"
                       onClick={() => handleCartonDelta(product.id, -1)}
-                      className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold flex items-center justify-center hover:bg-slate-100 active:scale-95 cursor-pointer shadow-xs"
+                      className="w-12 h-12 min-w-[48px] min-h-[48px] rounded-xl bg-white border border-slate-300 text-slate-700 font-bold flex items-center justify-center hover:bg-slate-100 active:scale-95 cursor-pointer shadow-xs"
                     >
-                      <Minus className="w-3.5 h-3.5" />
+                      <Minus className="w-4 h-4" />
                     </button>
                     <span className="font-mono font-extrabold text-base text-slate-900 px-2 whitespace-nowrap">
                       {qty.cartons}
                     </span>
                     <button
+                      type="button"
                       onClick={() => handleCartonDelta(product.id, 1)}
-                      className="w-8 h-8 rounded-lg bg-amber-600 text-white font-bold flex items-center justify-center hover:bg-amber-700 active:scale-95 cursor-pointer shadow-xs"
+                      className="w-12 h-12 min-w-[48px] min-h-[48px] rounded-xl bg-amber-600 text-white font-bold flex items-center justify-center hover:bg-amber-700 active:scale-95 cursor-pointer shadow-xs"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
                 {/* Loose Pieces Stepper */}
-                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80 flex flex-col justify-between">
-                  <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 mb-1">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 flex flex-col justify-between">
+                  <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 mb-1.5">
                     <span>Loose Pieces</span>
-                    <span className="font-mono text-slate-400 whitespace-nowrap">
-                      (@{formatRate(unitRetailRate)}/pc)
+                    <span className="font-mono text-slate-400 whitespace-nowrap text-[10px]">
+                      (@{formatRate(unitRetailRate)})
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <button
+                      type="button"
                       onClick={() => handlePiecesDelta(product.id, -1, product.packSize)}
-                      className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold flex items-center justify-center hover:bg-slate-100 active:scale-95 cursor-pointer shadow-xs"
+                      className="w-12 h-12 min-w-[48px] min-h-[48px] rounded-xl bg-white border border-slate-300 text-slate-700 font-bold flex items-center justify-center hover:bg-slate-100 active:scale-95 cursor-pointer shadow-xs"
                     >
-                      <Minus className="w-3.5 h-3.5" />
+                      <Minus className="w-4 h-4" />
                     </button>
                     <span className="font-mono font-extrabold text-base text-slate-900 px-2 whitespace-nowrap">
                       {qty.pieces}
                     </span>
                     <button
+                      type="button"
                       onClick={() => handlePiecesDelta(product.id, 1, product.packSize)}
-                      className="w-8 h-8 rounded-lg bg-amber-600 text-white font-bold flex items-center justify-center hover:bg-amber-700 active:scale-95 cursor-pointer shadow-xs"
+                      className="w-12 h-12 min-w-[48px] min-h-[48px] rounded-xl bg-amber-600 text-white font-bold flex items-center justify-center hover:bg-amber-700 active:scale-95 cursor-pointer shadow-xs"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -761,10 +777,10 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
         })}
       </div>
 
-      {/* Floating Bottom Cart Review Bar */}
+      {/* Floating Bottom Cart Review Bar - Anchored above bottom navigation */}
       {cartItems.length > 0 && (
-        <div className="fixed bottom-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 p-3 shadow-2xl text-white">
-          <div className="max-w-lg mx-auto space-y-2.5">
+        <div className="fixed bottom-16 left-0 right-0 w-full bg-slate-900/98 backdrop-blur-md border-t border-slate-800 p-3 shadow-2xl text-white z-40">
+          <div className="w-full max-w-xl mx-auto space-y-2.5">
             {/* Quick Math Breakdown */}
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-300 whitespace-nowrap">
@@ -783,11 +799,11 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
             </div>
 
             {/* Payment Term Selector */}
-            <div className="flex items-center gap-1.5 text-xs">
+            <div className="grid grid-cols-3 gap-1.5 text-xs">
               <button
                 type="button"
                 onClick={() => setPaymentType('credit')}
-                className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors cursor-pointer ${
+                className={`min-h-[44px] py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center ${
                   paymentType === 'credit'
                     ? 'bg-amber-600 border-amber-500 text-white'
                     : 'bg-slate-800 border-slate-700 text-slate-300'
@@ -798,7 +814,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               <button
                 type="button"
                 onClick={() => setPaymentType('cash')}
-                className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors cursor-pointer ${
+                className={`min-h-[44px] py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center ${
                   paymentType === 'cash'
                     ? 'bg-emerald-600 border-emerald-500 text-white'
                     : 'bg-slate-800 border-slate-700 text-slate-300'
@@ -809,7 +825,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               <button
                 type="button"
                 onClick={() => setPaymentType('partial')}
-                className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors cursor-pointer ${
+                className={`min-h-[44px] py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center ${
                   paymentType === 'partial'
                     ? 'bg-blue-600 border-blue-500 text-white'
                     : 'bg-slate-800 border-slate-700 text-slate-300'
@@ -821,14 +837,14 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
 
             {/* Partial Cash Input */}
             {paymentType === 'partial' && (
-              <div className="flex items-center gap-2 bg-slate-800 p-2 rounded-lg text-xs">
+              <div className="flex items-center gap-2 bg-slate-800 p-2 rounded-xl text-xs">
                 <span className="text-slate-300 text-[11px] shrink-0 whitespace-nowrap">Cash Collected:</span>
                 <input
                   type="number"
                   value={cashCollected || ''}
                   onChange={(e) => setCashCollected(parseFloat(e.target.value) || 0)}
                   placeholder="e.g. 20000"
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 font-mono text-emerald-400 font-bold focus:outline-none"
+                  className="w-full min-h-[38px] bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 font-mono text-emerald-400 font-bold focus:outline-none"
                 />
                 <span className="text-slate-400 font-mono text-[10px] shrink-0 whitespace-nowrap">
                   Bal: {formatAmount(Math.max(0, netBill - cashCollected))}
@@ -840,10 +856,10 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
             <button
               onClick={handleSubmitOrder}
               disabled={isSaving}
-              className="w-full min-h-[48px] bg-amber-600 hover:bg-amber-500 active:scale-98 text-white font-extrabold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
+              className="w-full min-h-[48px] h-12 bg-amber-600 hover:bg-amber-500 active:scale-98 text-white font-extrabold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
             >
               <ShoppingCart className="w-5 h-5" />
-              <span className="whitespace-nowrap">
+              <span className="whitespace-nowrap font-bold">
                 {isSaving
                   ? 'Saving to IndexedDB...'
                   : `Book Order (${formatAmount(netBill)})`}
@@ -855,8 +871,8 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
 
       {/* Order Booking Success Modal with Thermal Receipt */}
       {savedOrder && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6 shadow-2xl flex flex-col space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-3">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6 shadow-2xl flex flex-col space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-6 h-6 text-emerald-600" />

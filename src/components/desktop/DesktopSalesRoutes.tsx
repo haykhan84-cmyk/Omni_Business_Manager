@@ -130,7 +130,7 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
   const [zeroSaleNotes, setZeroSaleNotes] = useState<string>('');
 
   // Staged Customer for Left Staging Panel
-  const [selectedStagedCustomerId, setSelectedStagedCustomerId] = useState<string>('cust-stg-994');
+  const [selectedStagedCustomerId, setSelectedStagedCustomerId] = useState<string>('');
 
   // Notification Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -170,8 +170,8 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
   const stagedCustomer = useMemo(() => {
     return (
       customers.find((c) => c.id === selectedStagedCustomerId) ||
-      customers.find((c) => c.id === 'cust-stg-994') ||
-      customers[0]
+      customers[0] ||
+      null
     );
   }, [customers, selectedStagedCustomerId]);
 

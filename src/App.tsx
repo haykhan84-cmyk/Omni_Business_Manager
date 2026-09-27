@@ -940,7 +940,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-white">
+    <div className="w-full min-h-screen min-h-[100dvh] bg-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-white overflow-x-hidden">
       {/* Universal Header with Supabase Telemetry & Live Bank Badge */}
       <Header
         currentMode={currentMode}
@@ -974,7 +974,7 @@ export default function App() {
       />
 
       {/* Main Viewport Content */}
-      <main className="flex-1 w-full">
+      <main className="flex-1 w-full flex flex-col overflow-x-hidden">
         {currentMode === 'mobile' ? (
           <MobileFieldView
             products={products}
@@ -988,6 +988,7 @@ export default function App() {
             onSaveOrder={handleSaveOrder}
             onAddRoznamchaEntry={handleAddRoznamchaEntry}
             onAddCustomer={handleAddCustomer}
+            onBulkAddCustomers={handleBulkAddCustomers}
             onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
             onDeleteOrder={handleDeleteOrder}
             onSyncNow={handleSyncNow}

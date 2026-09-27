@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Search,
   Phone,
@@ -10,12 +10,19 @@ import {
   Receipt,
   FileText,
   UserPlus,
+  Users,
+  Upload,
   Share2,
   X,
   CreditCard,
 } from 'lucide-react';
 import { Customer, Order, RoznamchaEntry } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
+import { parseCustomerCsv } from '../../utils/csvCustomerHelper';
+import { getNextSequenceNumber } from '../../utils/sequenceNumbering';
+import { db } from '../../db';
+import { syncCustomersToSupabase } from '../../db/supabase';
+import { ACTIVE_TENANT_ID } from '../../db/localDb';
 
 interface MobileClientLedgerProps {
   customers: Customer[];
@@ -23,6 +30,7 @@ interface MobileClientLedgerProps {
   roznamcha: RoznamchaEntry[];
   onSelectCustomerForOrder: (customer: Customer) => void;
   onAddCustomer: (customer: Omit<Customer, 'id' | 'currentBalance'>) => Promise<void>;
+  onBulkAddCustomers?: (customers: Customer[]) => Promise<void>;
 }
 
 export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
@@ -31,11 +39,15 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
   roznamcha,
   onSelectCustomerForOrder,
   onAddCustomer,
+  onBulkAddCustomers,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoute, setSelectedRoute] = useState('All');
   const [activeLedgerCustomer, setActiveLedgerCustomer] = useState<Customer | null>(null);
   const [isOnboardOpen, setIsOnboardOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importToast, setImportToast] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // New Customer Form State
   const [newShopName, setNewShopName] = useState('');
@@ -46,6 +58,72 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
   const [newCnic, setNewCnic] = useState('');
   const [newCreditLimit, setNewCreditLimit] = useState(100000);
   const [newAtlStatus, setNewAtlStatus] = useState<'filer' | 'non_filer'>('filer');
+
+  // Handle CSV file upload & parsing
+  const handleCsvFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const parsed = parseCustomerCsv(text);
+      const validRows = parsed.rows.filter((r) => r.isValid);
+      if (validRows.length === 0) {
+        setImportToast('No valid customer rows found in CSV. Required: Shop Name, Route');
+        setTimeout(() => setImportToast(null), 3500);
+        return;
+      }
+
+      const startSeqNum = getNextSequenceNumber(customers, (c) => c.shopNumber || c.id);
+      const newCustomers: Customer[] = validRows.map((row, idx) => {
+        const assignedShopNum = startSeqNum + idx;
+        const custId = `cust-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`;
+        return {
+          id: custId,
+          tenant_id: ACTIVE_TENANT_ID,
+          shopNumber: assignedShopNum,
+          shopName: row.shop_name,
+          shop_name: row.shop_name,
+          name: row.owner_name || row.shop_name,
+          owner_name: row.owner_name || row.shop_name,
+          phone: row.phone,
+          whatsapp_number: row.whatsapp || row.phone,
+          route: row.route,
+          address: `${row.route}, Swat`,
+          zone: 'Mingora Zone 1',
+          channel_type: row.channel_type,
+          tax_status: 'Filer',
+          atlStatus: 'filer',
+          creditLimit: row.credit_limit,
+          credit_limit: row.credit_limit,
+          credit_days: 15,
+          currentBalance: row.opening_balance,
+          current_balance: row.opening_balance,
+          status: 'active',
+        };
+      });
+
+      await db.customers.bulkPut(newCustomers);
+      try {
+        await syncCustomersToSupabase(newCustomers);
+      } catch (err) {
+        console.warn('Supabase sync warning:', err);
+      }
+
+      if (onBulkAddCustomers) {
+        await onBulkAddCustomers(newCustomers);
+      }
+
+      setImportToast(`🎉 Imported ${newCustomers.length} shops into database!`);
+      setTimeout(() => setImportToast(null), 3500);
+    } catch (err: any) {
+      setImportToast(`Import error: ${err?.message || 'Failed to read file'}`);
+      setTimeout(() => setImportToast(null), 3500);
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const routes = useMemo(() => {
     const set = new Set(customers.map((c) => c.route));
@@ -134,36 +212,71 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
   };
 
   return (
-    <div className="flex flex-col space-y-4 pb-20">
+    <div className="w-full flex flex-col space-y-4 pb-28 overflow-x-hidden">
+      {/* Hidden file input for CSV bulk import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        onChange={handleCsvFileChange}
+        className="hidden"
+      />
+
+      {/* Floating Import Toast */}
+      {importToast && (
+        <div className="bg-slate-900 border border-amber-500/50 text-white p-3 rounded-xl text-xs font-bold flex items-center justify-between shadow-xl animate-in fade-in">
+          <span>{importToast}</span>
+          <button
+            type="button"
+            onClick={() => setImportToast(null)}
+            className="text-slate-400 hover:text-white ml-2"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Action & Search Bar */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+      <div className="flex flex-col gap-2.5 w-full">
+        <div className="relative w-full">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Search Shop, Owner, CNIC, Phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-amber-500 shadow-sm"
+            className="w-full min-h-[48px] h-12 bg-white border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-amber-500 shadow-sm"
           />
         </div>
-        <button
-          onClick={() => setIsOnboardOpen(true)}
-          className="min-h-[40px] px-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span className="hidden sm:inline">Onboard Shop</span>
-          <span className="sm:hidden">+ Shop</span>
-        </button>
+
+        <div className="grid grid-cols-2 gap-2 w-full">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+            className="w-full min-h-[48px] h-12 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+          >
+            <Upload className="w-4 h-4 text-amber-700" />
+            <span className="truncate">{isImporting ? 'Importing...' : '📥 Bulk Import (CSV)'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsOnboardOpen(true)}
+            className="w-full min-h-[48px] h-12 px-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>+ Add Retailer</span>
+          </button>
+        </div>
       </div>
 
       {/* Route Filter Chips */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs w-full">
         {routes.map((r) => (
           <button
             key={r}
             onClick={() => setSelectedRoute(r)}
-            className={`px-3 py-1.5 rounded-full whitespace-nowrap font-semibold cursor-pointer transition-colors ${
+            className={`min-h-[36px] px-3.5 py-1.5 rounded-full whitespace-nowrap font-semibold cursor-pointer transition-colors ${
               selectedRoute === r
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
@@ -175,23 +288,35 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
       </div>
 
       {/* Customer List Cards */}
-      <div className="space-y-3">
+      <div className="space-y-3 w-full">
         {filteredCustomers.length === 0 && (
-          <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 space-y-3">
+          <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 space-y-3 w-full">
             <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mx-auto">
-              <UserPlus className="w-6 h-6" />
+              <Users className="w-6 h-6" />
             </div>
-            <div className="text-slate-900 font-bold text-sm">No Retailers Registered</div>
-            <p className="text-xs text-slate-500 max-w-xs mx-auto">
-              Onboard your first real retail shop to start booking orders and recording cash recoveries.
+            <div className="text-slate-900 font-black text-base">0 Shops Found</div>
+            <p className="text-xs text-slate-600 max-w-sm mx-auto font-medium">
+              0 Shops Found. Click 'Bulk Import (CSV)' or '+ Add Retailer' to onboard your outlets.
             </p>
-            <button
-              onClick={() => setIsOnboardOpen(true)}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm mx-auto cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>+ Add Customer / Retailer</span>
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2 w-full">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting}
+                className="w-full sm:w-auto min-h-[48px] h-12 px-4 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-2xs cursor-pointer transition-colors"
+              >
+                <Upload className="w-4 h-4 text-amber-700" />
+                <span>{isImporting ? 'Importing CSV...' : '📥 Bulk Import (CSV)'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsOnboardOpen(true)}
+                className="w-full sm:w-auto min-h-[48px] h-12 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-colors"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>+ Add Retailer</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -205,7 +330,7 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
           return (
             <div
               key={cust.id}
-              className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3"
+              className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3 w-full"
             >
               {/* Header */}
               <div className="flex justify-between items-start gap-2">
@@ -237,29 +362,29 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
                   </div>
                 </div>
 
-                {/* Quick Call / WhatsApp */}
-                <div className="flex items-center gap-1 shrink-0">
+                {/* Quick Call / WhatsApp Touch Friendly */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   {cust.phone && (
                     <a
                       href={`tel:${cust.phone}`}
-                      className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors"
+                      className="w-12 h-12 min-w-[48px] min-h-[48px] rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors"
                       title="Call Shopkeeper"
                     >
-                      <Phone className="w-4 h-4" />
+                      <Phone className="w-5 h-5" />
                     </a>
                   )}
                   <button
                     onClick={() => handleShareWhatsApp(cust)}
-                    className="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center transition-colors cursor-pointer"
+                    className="w-12 h-12 min-w-[48px] min-h-[48px] rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center transition-colors cursor-pointer"
                     title="Send WhatsApp Balance Statement"
                   >
-                    <MessageSquare className="w-4 h-4" />
+                    <MessageSquare className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
               {/* Financial Exposure Meter */}
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1.5">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1.5 w-full">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500 font-medium">Credit Utilization ({utilPct}%)</span>
                   <span className="font-mono text-slate-700">
@@ -292,17 +417,17 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
               </div>
 
               {/* Action Buttons (48px targets) */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-1 w-full">
                 <button
                   onClick={() => onSelectCustomerForOrder(cust)}
-                  className="min-h-[44px] bg-amber-600 hover:bg-amber-500 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-all"
+                  className="w-full min-h-[48px] h-12 bg-amber-600 hover:bg-amber-500 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-all"
                 >
                   <ShoppingCart className="w-4 h-4" />
                   <span>Book Spot Order</span>
                 </button>
                 <button
                   onClick={() => setActiveLedgerCustomer(cust)}
-                  className="min-h-[44px] bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                  className="w-full min-h-[48px] h-12 bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
                 >
                   <Receipt className="w-4 h-4 text-slate-600" />
                   <span>View Statement</span>
@@ -316,7 +441,7 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
       {/* Customer Statement / Transaction History Drawer Modal */}
       {activeLedgerCustomer && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end justify-center p-0 sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-4 sm:p-6 shadow-2xl flex flex-col space-y-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-h-[85vh] overflow-y-auto p-4 sm:p-6 shadow-2xl flex flex-col space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
                 <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
@@ -422,8 +547,8 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
 
       {/* Fast Shop Onboard Modal */}
       {isOnboardOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 shadow-2xl flex flex-col space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto p-5 shadow-2xl flex flex-col space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
                 <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">

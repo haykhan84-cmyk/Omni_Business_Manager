@@ -103,9 +103,9 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
   const todayTotalRecovered = todayRecoveries.reduce((sum, r) => sum + r.amount, 0);
 
   return (
-    <div className="space-y-4 pb-20 w-full">
+    <div className="space-y-4 pb-28 w-full overflow-x-hidden">
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-emerald-800 to-teal-800 text-white p-4 rounded-2xl shadow-sm border border-emerald-700/50">
+      <div className="bg-gradient-to-r from-emerald-800 to-teal-800 text-white p-4 rounded-2xl shadow-sm border border-emerald-700/50 w-full">
         <div className="flex items-center justify-between">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200 block">
@@ -122,35 +122,44 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
         </div>
       </div>
 
+      {customers.length === 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-center space-y-2 shadow-2xs w-full">
+          <div className="text-slate-900 font-black text-sm">0 Shops Found</div>
+          <p className="text-xs text-slate-600 font-medium">
+            0 Shops Found. Click 'Bulk Import (CSV)' or '+ Add Retailer' to onboard your outlets.
+          </p>
+        </div>
+      )}
+
       {successToast && (
-        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-3.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-top-2">
+        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-3.5 rounded-2xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-top-2 w-full">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <span>{successToast}</span>
         </div>
       )}
 
       {/* Main Entry Form */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-4">
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-4 w-full">
         {/* Customer Select / Search */}
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
             Select Retailer / Shop
           </label>
           <div className="relative mb-2">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search by shop or owner name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-amber-500"
+              className="w-full min-h-[48px] h-12 bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-amber-500"
             />
           </div>
 
           <select
             value={selectedCustomerId}
             onChange={(e) => setSelectedCustomerId(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-semibold focus:outline-none focus:border-amber-500"
+            className="w-full min-h-[48px] h-12 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
           >
             {filteredCustomers.length === 0 ? (
               <option value="">No matching shops found</option>
@@ -166,7 +175,7 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
 
         {/* Selected Customer Snapshot Card */}
         {selectedCustomer && (
-          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between text-xs">
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between text-xs w-full">
             <div>
               <div className="font-extrabold text-slate-900">{selectedCustomer.shopName}</div>
               <div className="text-[11px] text-slate-500">
@@ -198,18 +207,18 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
               value={amount}
               onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
               placeholder="0"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-base text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              className="w-full min-h-[48px] h-12 bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-base text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
             />
           </div>
 
           {/* Quick Denomination Chips */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
             {[1000, 2000, 5000, 10000, 20000].map((val) => (
               <button
                 key={val}
                 type="button"
                 onClick={() => handleAddQuickAmount(val)}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono font-bold transition-all cursor-pointer whitespace-nowrap"
+                className="min-h-[40px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap"
               >
                 +{formatAmount(val)}
               </button>
@@ -218,7 +227,7 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
               <button
                 type="button"
                 onClick={handleSetFullOutstanding}
-                className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap"
+                className="min-h-[40px] px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
               >
                 Full Clear ({formatAmount(selectedCustomer.currentBalance)})
               </button>
@@ -237,7 +246,7 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
                 key={method}
                 type="button"
                 onClick={() => setPaymentMethod(method)}
-                className={`py-2 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
+                className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
                   paymentMethod === method
                     ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
                     : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -263,7 +272,7 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
               type="text"
               value={slipNo}
               onChange={(e) => setSlipNo(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-amber-500"
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-amber-500"
             />
           </div>
           <div>
@@ -275,7 +284,7 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
               placeholder="e.g. Regular Monday recovery"
               value={narration}
               onChange={(e) => setNarration(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-amber-500"
+              className="w-full min-h-[44px] bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-amber-500"
             />
           </div>
         </div>
@@ -284,7 +293,7 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
         <button
           type="submit"
           disabled={isSubmitting || !amount || Number(amount) <= 0}
-          className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] disabled:opacity-50 text-white font-black rounded-xl shadow-lg shadow-emerald-700/20 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
+          className="w-full min-h-[48px] h-12 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] disabled:opacity-50 text-white font-black rounded-xl shadow-lg shadow-emerald-700/20 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
         >
           <Send className="w-4 h-4" />
           <span>

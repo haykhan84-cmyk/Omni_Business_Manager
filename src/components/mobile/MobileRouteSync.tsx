@@ -77,9 +77,9 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
   };
 
   return (
-    <div className="space-y-4 pb-20 w-full">
+    <div className="space-y-4 pb-28 w-full overflow-x-hidden">
       {/* Route & Officer Identity Card */}
-      <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 shadow-md">
+      <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 shadow-md w-full">
         <div className="flex items-center justify-between">
           <div>
             <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 block font-bold">
@@ -105,10 +105,10 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
       </div>
 
       {/* Cloud & Offline Sync Trigger Card */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between gap-3">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-            {isOnline ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+            {isOnline ? <Wifi className="w-6 h-6" /> : <WifiOff className="w-6 h-6" />}
           </div>
           <div>
             <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
@@ -131,9 +131,9 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
           <button
             onClick={onSyncNow}
             disabled={isSyncing}
-            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            className="w-full sm:w-auto min-h-[48px] h-12 px-5 rounded-xl bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer shrink-0 disabled:opacity-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
           </button>
         )}
@@ -230,7 +230,7 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
               <select
                 value={zeroSaleReason}
                 onChange={(e) => setZeroSaleReason(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none"
+                className="w-full min-h-[48px] h-12 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-amber-500 cursor-pointer"
               >
                 <option value="">Select Reason for Zero Sale...</option>
                 <option value="Shop Closed / Proprietor Away">Shop Closed / Proprietor Away</option>
@@ -243,7 +243,7 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
               <button
                 type="submit"
                 disabled={!selectedCustForZeroSale || !zeroSaleReason}
-                className="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                className="w-full min-h-[48px] h-12 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
               >
                 Submit Zero-Sale Reason
               </button>
@@ -251,43 +251,49 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
           </div>
 
           {/* Quick Route Stops List */}
-          <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-2.5">
+          <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-2.5 w-full">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="font-extrabold text-sm text-slate-900">Assigned Route Retailers</h3>
               <span className="text-xs text-slate-500 font-bold">{customers.length} Shops</span>
             </div>
 
-            <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
-              {customers.map((c, idx) => (
-                <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[10px] font-bold flex items-center justify-center shrink-0">
-                      {idx + 1}
-                    </span>
-                    <div>
-                      <div className="font-extrabold text-slate-900">{c.shopName}</div>
-                      <div className="text-[11px] text-slate-500">
-                        {c.name} • {c.phone}
+            {customers.length === 0 ? (
+              <div className="py-6 text-center text-slate-500 text-xs font-medium">
+                0 Shops Found. Click 'Bulk Import (CSV)' or '+ Add Retailer' to onboard your outlets.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                {customers.map((c, idx) => (
+                  <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[10px] font-bold flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <div className="font-extrabold text-slate-900">{c.shopName}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {c.name} • {c.phone}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="text-right">
-                      <span className="font-mono font-bold text-xs text-slate-900 block whitespace-nowrap">
-                        {formatAmount(c.currentBalance)}
-                      </span>
-                      <span className="text-[10px] text-slate-400">Balance</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <span className="font-mono font-bold text-xs text-slate-900 block whitespace-nowrap">
+                          {formatAmount(c.currentBalance)}
+                        </span>
+                        <span className="text-[10px] text-slate-400">Balance</span>
+                      </div>
+                      <button
+                        onClick={() => onSelectCustomerForOrder(c)}
+                        className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs cursor-pointer transition-all shadow-2xs"
+                      >
+                        Book
+                      </button>
                     </div>
-                    <button
-                      onClick={() => onSelectCustomerForOrder(c)}
-                      className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] cursor-pointer transition-all"
-                    >
-                      Book
-                    </button>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
