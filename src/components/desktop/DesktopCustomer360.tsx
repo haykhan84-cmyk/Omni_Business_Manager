@@ -42,7 +42,7 @@ import {
   Columns,
 } from 'lucide-react';
 import { Customer, Order, RoznamchaEntry, CustomerNote, ChannelType, TaxStatus } from '../../types';
-import { formatPKR, formatDateTime } from '../../utils/calculations';
+import { formatPKR, formatDateTime, safeLabel } from '../../utils/calculations';
 import {
   getTenantCustomerNotes,
   addTenantCustomerNote,
@@ -1298,25 +1298,25 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
             { id: 'corporate' as const, label: 'Corporate Retail', count: segmentCounts.corporate },
             { id: 'export' as const, label: 'Export / Cross-Border', count: segmentCounts.export },
             { id: 'suspended' as const, label: 'Suspended / Credit Locked', count: segmentCounts.suspended },
-          ].map((seg) => {
-            const isActive = selectedSegment === seg.id;
+          ].filter(Boolean).map((seg) => {
+            const isActive = selectedSegment === seg?.id;
             return (
               <button
-                key={seg.id}
-                onClick={() => setSelectedSegment(seg.id)}
+                key={seg?.id || Math.random().toString()}
+                onClick={() => seg?.id && setSelectedSegment(seg.id)}
                 className={`px-3.5 py-1.5 rounded-full font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
                   isActive
                     ? 'bg-amber-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
-                <span>{seg.label}</span>
+                <span>{safeLabel(seg)}</span>
                 <span
                   className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                     isActive ? 'bg-amber-800 text-amber-100' : 'bg-slate-200 text-slate-700'
                   }`}
                 >
-                  {seg.count}
+                  {seg?.count ?? 0}
                 </span>
               </button>
             );
@@ -1490,23 +1490,23 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                     { key: 'aging', label: '8. Aging Risk' },
                     { key: 'sync', label: '9. Sync Status' },
                     { key: 'actions', label: '10. Actions' },
-                  ].map((col) => (
+                  ].filter(Boolean).map((col) => (
                       <label
-                        key={col.key}
+                        key={col?.key || Math.random().toString()}
                         className="flex items-center gap-2.5 px-2 py-1 hover:bg-slate-800 rounded-lg cursor-pointer text-slate-200 select-none text-xs font-medium transition-colors"
                       >
                         <input
                           type="checkbox"
-                          checked={visibleColumns[col.key as keyof typeof visibleColumns]}
+                          checked={visibleColumns[col?.key as keyof typeof visibleColumns]}
                           onChange={(e) =>
-                            setVisibleColumns({
+                            col?.key && setVisibleColumns({
                               ...visibleColumns,
                               [col.key]: e.target.checked,
                             })
                           }
                           className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-400 w-4 h-4 cursor-pointer"
                         />
-                        <span className="truncate">{col.label}</span>
+                        <span className="truncate">{safeLabel(col)}</span>
                       </label>
                     ))}
                   </div>

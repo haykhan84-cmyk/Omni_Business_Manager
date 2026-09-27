@@ -35,7 +35,7 @@ import {
   Building,
 } from 'lucide-react';
 import { Customer, GRNDocket, Order, Product, RoznamchaCategory, RoznamchaEntry } from '../../types';
-import { formatPKR, formatDateTime } from '../../utils/calculations';
+import { formatPKR, formatDateTime, safeLabel } from '../../utils/calculations';
 
 interface DesktopOverviewProps {
   products: Product[];
@@ -569,19 +569,19 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
                   { id: 'quarter', label: 'Quarter' },
                   { id: 'fy', label: 'FY26 YTD' },
                 ] as const
-              ).map((p) => (
+              ).filter(Boolean).map((p) => (
                 <button
-                  key={p.id}
-                  onClick={() => setSelectedPeriod(p.id)}
+                  key={p?.id || Math.random().toString()}
+                  onClick={() => p?.id && setSelectedPeriod(p.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    selectedPeriod === p.id
+                    selectedPeriod === p?.id
                       ? 'bg-white text-slate-900 shadow-sm border border-slate-200 font-extrabold'
                       : 'text-slate-500 hover:text-slate-900'
                   }`}
                   role="tab"
                   type="button"
                 >
-                  {p.label}
+                  {safeLabel(p)}
                 </button>
               ))}
             </div>
@@ -908,21 +908,21 @@ export const DesktopOverview: React.FC<DesktopOverviewProps> = ({
 
             {/* Analytical Breakdown Mini-Table */}
             <div className="w-full flex flex-col divide-y divide-slate-100 border-t border-b border-slate-100 text-xs">
-              {expenseBreakdown.map((item) => (
+              {expenseBreakdown.filter(Boolean).map((item) => (
                 <div
-                  key={item.label}
+                  key={safeLabel(item) || Math.random().toString()}
                   className="flex items-center justify-between py-2 px-1 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-2">
                     <span
                       className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: item.color }}
+                      style={{ backgroundColor: item?.color || '#cbd5e1' }}
                     ></span>
-                    <span className="font-semibold text-slate-800">{item.label}</span>
+                    <span className="font-semibold text-slate-800">{safeLabel(item)}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-slate-900 font-bold">{formatPKR(item.amount)}</span>
-                    <span className="font-bold text-slate-400 w-8 text-right font-mono">{item.percent}%</span>
+                    <span className="font-mono text-slate-900 font-bold">{formatPKR(item?.amount || 0)}</span>
+                    <span className="font-bold text-slate-400 w-8 text-right font-mono">{item?.percent || 0}%</span>
                   </div>
                 </div>
               ))}

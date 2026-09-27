@@ -33,7 +33,7 @@ import {
   Truck,
 } from 'lucide-react';
 import { Customer, Order, RoznamchaCategory, RoznamchaEntry, BankAccount, CompanyProfile, GRNDocket } from '../../types';
-import { formatPKR, formatDateTime, formatDate } from '../../utils/calculations';
+import { formatPKR, formatDateTime, formatDate, safeLabel } from '../../utils/calculations';
 import { extractShopSequence } from '../../utils/sequenceNumbering';
 
 interface DesktopRoznamchaProps {
@@ -845,23 +845,23 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
 
         {/* Quick Filter Bar with Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto py-1 no-scrollbar">
-          {operationalHeads.map((head) => (
+          {operationalHeads.filter(Boolean).map((head) => (
             <button
-              key={head.id}
-              onClick={() => setSelectedOperationalHead(head.id)}
+              key={head?.id || Math.random().toString()}
+              onClick={() => head?.id && setSelectedOperationalHead(head.id)}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
-                selectedOperationalHead === head.id
+                selectedOperationalHead === head?.id
                   ? 'bg-amber-600 text-white shadow-sm'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
               }`}
             >
-              <span>{head.label}</span>
+              <span>{safeLabel(head)}</span>
               <span
                 className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                  selectedOperationalHead === head.id ? 'bg-amber-800 text-white' : 'bg-white text-slate-600'
+                  selectedOperationalHead === head?.id ? 'bg-amber-800 text-white' : 'bg-white text-slate-600'
                 }`}
               >
-                {formatPKR(head.amount)} {head.id !== 'all' ? `• ${head.percent}%` : ''}
+                {formatPKR(head?.amount || 0)} {head?.id !== 'all' ? `• ${head?.percent || 0}%` : ''}
               </span>
             </button>
           ))}
@@ -975,15 +975,15 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                 { id: 'week', label: 'This Week' },
                 { id: 'all', label: 'All Records' },
               ] as const
-            ).map((d) => (
+            ).filter(Boolean).map((d) => (
               <button
-                key={d.id}
-                onClick={() => setDateFilter(d.id)}
+                key={d?.id || Math.random().toString()}
+                onClick={() => d?.id && setDateFilter(d.id)}
                 className={`px-2.5 py-1 rounded-lg cursor-pointer transition-all ${
-                  dateFilter === d.id ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-600'
+                  dateFilter === d?.id ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-600'
                 }`}
               >
-                {d.label}
+                {safeLabel(d)}
               </button>
             ))}
           </div>

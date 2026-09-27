@@ -43,7 +43,7 @@ import {
 import { db } from '../../db';
 import { ACTIVE_TENANT_ID } from '../../db/localDb';
 import { syncEmployeeToSupabase, deleteEmployeeFromSupabase } from '../../db/supabase';
-import { formatPKR, formatDate, formatDateTime } from '../../utils/calculations';
+import { formatPKR, formatDate, formatDateTime, safeLabel } from '../../utils/calculations';
 import { getNextSequenceNumber, formatEmployeeId, extractSequenceNumber } from '../../utils/sequenceNumbering';
 
 export const AVAILABLE_ROLES: EmployeeRole[] = [
@@ -967,18 +967,18 @@ export const DesktopStaffAttendance: React.FC<DesktopStaffAttendanceProps> = ({
               { id: 'labor', label: `Warehouse & Labor (${roleCounts.labor})` },
               { id: 'drivers', label: `Fleet Logistics (${roleCounts.drivers})` },
               { id: 'admin', label: `Finance & Admin (${roleCounts.admin})` },
-            ].map((btn) => (
+            ].filter(Boolean).map((btn) => (
               <button
-                key={btn.id}
-                onClick={() => setRoleFilter(btn.id)}
+                key={btn?.id || Math.random().toString()}
+                onClick={() => btn?.id && setRoleFilter(btn.id)}
                 className={`h-8 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer whitespace-nowrap ${
-                  roleFilter === btn.id
+                  roleFilter === btn?.id
                     ? 'bg-amber-600 text-white shadow-xs'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                 }`}
                 type="button"
               >
-                {btn.label}
+                {safeLabel(btn)}
               </button>
             ))}
           </div>

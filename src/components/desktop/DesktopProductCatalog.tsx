@@ -30,6 +30,7 @@ import {
   Percent,
 } from 'lucide-react';
 import { Product } from '../../types';
+import { safeLabel } from '../../utils/calculations';
 import { getNextSequenceNumber, formatSkuId } from '../../utils/sequenceNumbering';
 
 interface DesktopProductCatalogProps {
@@ -99,8 +100,10 @@ export const DesktopProductCatalog: React.FC<DesktopProductCatalogProps> = ({
   // Table Controls: Column Visibility
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
-    ALL_COLUMNS.forEach((col) => {
-      initial[col.key] = col.defaultVisible;
+    ALL_COLUMNS.filter(Boolean).forEach((col) => {
+      if (col?.key) {
+        initial[col.key] = col.defaultVisible;
+      }
     });
     return initial;
   });
@@ -774,7 +777,9 @@ export const DesktopProductCatalog: React.FC<DesktopProductCatalogProps> = ({
                     <button
                       onClick={() => {
                         const reset: Record<string, boolean> = {};
-                        ALL_COLUMNS.forEach((c) => (reset[c.key] = true));
+                        ALL_COLUMNS.filter(Boolean).forEach((c) => {
+                          if (c?.key) reset[c.key] = true;
+                        });
                         setVisibleColumns(reset);
                       }}
                       className="text-[10px] text-amber-400 hover:underline font-semibold cursor-pointer"
@@ -783,7 +788,8 @@ export const DesktopProductCatalog: React.FC<DesktopProductCatalogProps> = ({
                     </button>
                   </div>
                   <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                    {ALL_COLUMNS.map((col) => {
+                    {ALL_COLUMNS.filter(Boolean).map((col) => {
+                      if (!col) return null;
                       const isChecked = visibleColumns[col.key] !== false;
                       const isRequired = col.required;
                       return (
@@ -803,7 +809,7 @@ export const DesktopProductCatalog: React.FC<DesktopProductCatalogProps> = ({
                               onChange={() => toggleColumnVisibility(col.key)}
                               className="rounded border-slate-600 text-amber-600 focus:ring-amber-500 h-3.5 w-3.5 cursor-pointer"
                             />
-                            <span className="truncate">{col.label}</span>
+                            <span className="truncate">{safeLabel(col)}</span>
                           </div>
                           {isRequired && (
                             <span className="text-[9px] uppercase tracking-wider font-mono text-slate-500">

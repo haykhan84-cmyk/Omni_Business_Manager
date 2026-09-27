@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { safeLabel } from '../../utils/calculations';
 import {
   LayoutDashboard,
   Package,
@@ -131,11 +132,16 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
 
   // Filter based on user role permissions (if admin or no user defined, show all)
   const navItems = rawNavItems.filter((item) => {
+    if (!item) return false;
     if (!currentUser || currentUser.role === 'ADMIN') return true;
-    return item.roles.includes(currentUser.role);
+    return item.roles ? item.roles.includes(currentUser.role) : true;
   });
 
-  const activeNavItem = navItems.find((item) => item.id === activeTab) || navItems[0];
+  const activeNavItem =
+    navItems.find((item) => item?.id === activeTab) ||
+    navItems[0] ||
+    rawNavItems[0] ||
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard };
 
   const handleSelectTab = (tabId: any) => {
     setActiveTab(tabId);
@@ -158,7 +164,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
           <div>
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Section</div>
             <div className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-              <span>{activeNavItem.label}</span>
+              <span>{safeLabel(activeNavItem) || 'Section'}</span>
             </div>
           </div>
         </div>
@@ -209,7 +215,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 py-1.5">
                 Console Modules
               </div>
-              {navItems.map((item) => {
+              {navItems.filter(Boolean).map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
                 return (
@@ -223,7 +229,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
                     }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
-                    <span className="flex-1 truncate">{item.label}</span>
+                    <span className="flex-1 truncate">{safeLabel(item)}</span>
                     {isActive && <ChevronRight className="w-4 h-4 text-white" />}
                   </button>
                 );
@@ -253,7 +259,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
       {/* Desktop Horizontal Utility Bar Navigation (Visible >= 768px / md:flex) */}
       <div className="hidden md:flex bg-white rounded-2xl p-2 border border-slate-200 shadow-sm print:hidden items-center justify-between overflow-x-auto no-scrollbar">
         <nav className="flex items-center gap-1.5 min-w-max">
-          {navItems.map((item) => {
+          {navItems.filter(Boolean).map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
@@ -267,7 +273,7 @@ export const DesktopConsoleView: React.FC<DesktopConsoleViewProps> = ({
                 }`}
               >
                 <Icon className="w-4 h-4" />
-                <span>{item.label}</span>
+                <span>{safeLabel(item)}</span>
               </button>
             );
           })}

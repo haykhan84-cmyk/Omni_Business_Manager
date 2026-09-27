@@ -93,3 +93,12 @@ export function formatDate(isoString: string): string {
     year: 'numeric',
   });
 }
+
+/**
+ * Universal safe label extractor for table columns, chips, dropdowns, and route options.
+ * Safely guards against undefined objects and gracefully falls back across label/name/title.
+ */
+export function safeLabel(item: any): string {
+  if (!item) return '';
+  return item.label || item.name || item.title || '';
+}

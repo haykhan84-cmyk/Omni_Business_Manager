@@ -13,6 +13,7 @@ import { Header } from './components/Header';
 import { MobileFieldView } from './components/mobile/MobileFieldView';
 import { DesktopConsoleView } from './components/desktop/DesktopConsoleView';
 import { SupabaseSyncModal } from './components/shared/SupabaseSyncModal';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { getStoredSession, clearStoredSession } from './services/authService';
 import {
@@ -991,64 +992,66 @@ export default function App() {
 
       {/* Main Viewport Content */}
       <main className="flex-1 w-full flex flex-col overflow-x-hidden">
-        {currentMode === 'mobile' ? (
-          <MobileFieldView
-            products={products}
-            customers={customers}
-            orders={orders}
-            roznamcha={roznamcha}
-            cashInHand={cashInHand}
-            openingCash={openingCash}
-            isOnline={isOnline}
-            currentUser={currentUser}
-            onSaveOrder={handleSaveOrder}
-            onAddRoznamchaEntry={handleAddRoznamchaEntry}
-            onAddCustomer={handleAddCustomer}
-            onBulkAddCustomers={handleBulkAddCustomers}
-            onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
-            onDeleteOrder={handleDeleteOrder}
-            onSyncNow={handleSyncNow}
-            isSyncing={isSyncing}
-            syncQueueCount={syncQueueCount}
-          />
-        ) : (
-          <DesktopConsoleView
-            products={products}
-            customers={customers}
-            orders={orders}
-            roznamcha={roznamcha}
-            grnDockets={grnDockets}
-            cashInHand={cashInHand}
-            openingCash={openingCash}
-            isOnline={isOnline}
-            bankAccount={bankAccount}
-            companyProfile={companyProfile}
-            currentUser={currentUser}
-            calculatedBankBalance={bankBalance}
-            syncQueueCount={syncQueueCount}
-            isSyncing={isSyncing}
-            onSyncNow={handleSyncNow}
-            onSwitchToMobile={() => setCurrentMode('mobile')}
-            onAddProduct={handleAddProduct}
-            onUpdateProduct={handleUpdateProduct}
-            onDeleteProduct={handleDeleteProduct}
-            onAddRoznamchaEntry={handleAddRoznamchaEntry}
-            onAddCustomer={handleAddCustomer}
-            onBulkAddCustomers={handleBulkAddCustomers}
-            onUpdateCustomer={handleUpdateCustomer}
-            onDeleteCustomer={handleDeleteCustomer}
-            onPurgeAllCustomers={handlePurgeAllCustomers}
-            onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
-            onDeleteOrder={handleDeleteOrder}
-            onReceiveStock={handleReceiveStock}
-            onAddCustomGRN={handleAddCustomGRN}
-            onUpdateOpeningCash={handleUpdateOpeningCash}
-            onUpdateBankAccount={handleUpdateBankAccount}
-            onUpdateCompanyProfile={handleUpdateCompanyProfile}
-            onClearAllData={handleClearAllData}
-            onLoadSampleData={handleLoadSampleData}
-          />
-        )}
+        <ErrorBoundary fallbackTitle="Application View Error">
+          {currentMode === 'mobile' ? (
+            <MobileFieldView
+              products={products}
+              customers={customers}
+              orders={orders}
+              roznamcha={roznamcha}
+              cashInHand={cashInHand}
+              openingCash={openingCash}
+              isOnline={isOnline}
+              currentUser={currentUser}
+              onSaveOrder={handleSaveOrder}
+              onAddRoznamchaEntry={handleAddRoznamchaEntry}
+              onAddCustomer={handleAddCustomer}
+              onBulkAddCustomers={handleBulkAddCustomers}
+              onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
+              onDeleteOrder={handleDeleteOrder}
+              onSyncNow={handleSyncNow}
+              isSyncing={isSyncing}
+              syncQueueCount={syncQueueCount}
+            />
+          ) : (
+            <DesktopConsoleView
+              products={products}
+              customers={customers}
+              orders={orders}
+              roznamcha={roznamcha}
+              grnDockets={grnDockets}
+              cashInHand={cashInHand}
+              openingCash={openingCash}
+              isOnline={isOnline}
+              bankAccount={bankAccount}
+              companyProfile={companyProfile}
+              currentUser={currentUser}
+              calculatedBankBalance={bankBalance}
+              syncQueueCount={syncQueueCount}
+              isSyncing={isSyncing}
+              onSyncNow={handleSyncNow}
+              onSwitchToMobile={() => setCurrentMode('mobile')}
+              onAddProduct={handleAddProduct}
+              onUpdateProduct={handleUpdateProduct}
+              onDeleteProduct={handleDeleteProduct}
+              onAddRoznamchaEntry={handleAddRoznamchaEntry}
+              onAddCustomer={handleAddCustomer}
+              onBulkAddCustomers={handleBulkAddCustomers}
+              onUpdateCustomer={handleUpdateCustomer}
+              onDeleteCustomer={handleDeleteCustomer}
+              onPurgeAllCustomers={handlePurgeAllCustomers}
+              onDeleteRoznamchaEntry={handleDeleteRoznamchaEntry}
+              onDeleteOrder={handleDeleteOrder}
+              onReceiveStock={handleReceiveStock}
+              onAddCustomGRN={handleAddCustomGRN}
+              onUpdateOpeningCash={handleUpdateOpeningCash}
+              onUpdateBankAccount={handleUpdateBankAccount}
+              onUpdateCompanyProfile={handleUpdateCompanyProfile}
+              onClearAllData={handleClearAllData}
+              onLoadSampleData={handleLoadSampleData}
+            />
+          )}
+        </ErrorBoundary>
       </main>
     </div>
   );

@@ -276,7 +276,7 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
 
       {/* Route Filter Chips */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs w-full">
-        {routes.map((r) => (
+        {routes.filter(Boolean).map((r) => (
           <button
             key={r}
             onClick={() => setSelectedRoute(r)}

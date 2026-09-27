@@ -20,7 +20,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { Customer, Order, OrderItem, Product, SalesRoute, RouteStop, ZeroSaleCall, UserAccount } from '../../types';
-import { calculateOrderItem, formatPKR, formatAmount, formatRate } from '../../utils/calculations';
+import { calculateOrderItem, formatPKR, formatAmount, formatRate, safeLabel } from '../../utils/calculations';
 import { Thermal80mmReceipt } from '../shared/PrintTemplates';
 import { getTenantRoutes, getTenantRouteStops, logZeroSaleCall, ACTIVE_TENANT_ID } from '../../db/localDb';
 import { getNextSequenceNumber, formatInvoiceId, formatShopId, extractShopSequence } from '../../utils/sequenceNumbering';
@@ -66,14 +66,16 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
 
   // Combined route names
   const routeOptions = useMemo(() => {
-    const list: { id: string; name: string; code?: string; schedule?: string[] }[] = [];
-    dbRoutes.forEach((r) => {
-      list.push({ id: r.id, name: r.route_name, code: r.route_code, schedule: r.schedule_days });
+    const list: { id: string; name: string; label: string; code?: string; schedule?: string[] }[] = [];
+    (dbRoutes || []).filter(Boolean).forEach((r) => {
+      if (r) {
+        list.push({ id: r.id, name: r.route_name, label: r.route_name, code: r.route_code, schedule: r.schedule_days });
+      }
     });
     // Add any customer routes not in dbRoutes
-    customers.forEach((c) => {
-      if (c.route && !list.some((l) => l.name === c.route)) {
-        list.push({ id: `cust-${c.route}`, name: c.route, code: 'BEAT' });
+    (customers || []).filter(Boolean).forEach((c) => {
+      if (c && c.route && !list.some((l) => l.name === c.route)) {
+        list.push({ id: `cust-${c.route}`, name: c.route, label: c.route, code: 'BEAT' });
       }
     });
     return list;
@@ -84,21 +86,22 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
   );
 
   useEffect(() => {
-    if (routeOptions.length > 0 && !routeOptions.some((r) => r.name === selectedRouteName)) {
-      setSelectedRouteName(routeOptions[0].name);
+    if (routeOptions.length > 0 && !routeOptions.some((r) => r?.name === selectedRouteName)) {
+      setSelectedRouteName(routeOptions[0]?.name || '');
     }
   }, [routeOptions, selectedRouteName]);
 
   const currentDbRoute = useMemo(() => {
-    return dbRoutes.find((r) => r.route_name === selectedRouteName);
+    return (dbRoutes || []).find((r) => r?.route_name === selectedRouteName) || null;
   }, [dbRoutes, selectedRouteName]);
 
   // Route customers ordered by stop sequence
   const routeCustomers = useMemo(() => {
-    const matchingCusts = customers.filter((c) => {
+    const matchingCusts = (customers || []).filter(Boolean).filter((c) => {
+      if (!c) return false;
       if (currentDbRoute) {
-        const isAssignedInStops = dbStops.some(
-          (s) => s.route_id === currentDbRoute.id && s.customer_id === c.id
+        const isAssignedInStops = (dbStops || []).some(
+          (s) => s?.route_id === currentDbRoute.id && s?.customer_id === c.id
         );
         return isAssignedInStops || c.route === selectedRouteName;
       }
@@ -106,10 +109,10 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
     });
 
     if (currentDbRoute) {
-      const stopsForRoute = dbStops.filter((s) => s.route_id === currentDbRoute.id);
+      const stopsForRoute = (dbStops || []).filter((s) => s?.route_id === currentDbRoute.id);
       return matchingCusts.sort((a, b) => {
-        const seqA = stopsForRoute.find((s) => s.customer_id === a.id)?.stop_sequence ?? 999;
-        const seqB = stopsForRoute.find((s) => s.customer_id === b.id)?.stop_sequence ?? 999;
+        const seqA = stopsForRoute.find((s) => s?.customer_id === a.id)?.stop_sequence ?? 999;
+        const seqB = stopsForRoute.find((s) => s?.customer_id === b.id)?.stop_sequence ?? 999;
         return seqA - seqB;
       });
     }
@@ -123,13 +126,14 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
 
   // Sync if route changed
   useEffect(() => {
-    if (routeCustomers.length > 0 && !routeCustomers.some((c) => c.id === selectedCustomerId)) {
-      setSelectedCustomerId(routeCustomers[0].id);
+    if (routeCustomers.length > 0 && !routeCustomers.some((c) => c?.id === selectedCustomerId)) {
+      setSelectedCustomerId(routeCustomers[0]?.id || '');
     }
   }, [routeCustomers, selectedCustomerId]);
 
   const selectedCustomer = useMemo(() => {
-    return customers.find((c) => c.id === selectedCustomerId);
+    if (!selectedCustomerId || !customers) return null;
+    return customers.find((c) => c?.id === selectedCustomerId) || null;
   }, [customers, selectedCustomerId]);
 
   // Stable sequence mapping for all customers
@@ -372,13 +376,13 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
   const inputDisplayValue = isShopPickerOpen
     ? shopSearchQuery
     : selectedCustomer
-    ? `Shop #${currentSelectedSeq} • ${selectedCustomer.shopName} (Proprietor: ${
-        selectedCustomer.owner_name || selectedCustomer.name
+    ? `Shop #${currentSelectedSeq} • ${selectedCustomer?.shopName || selectedCustomer?.shop_name || 'Outlet'} (Proprietor: ${
+        selectedCustomer?.owner_name || selectedCustomer?.name || 'Owner'
       })`
     : '';
 
   const inputPlaceholderText = selectedCustomer
-    ? `Shop #${currentSelectedSeq} • ${selectedCustomer.shopName} (Type #, Name, Owner...)`
+    ? `Shop #${currentSelectedSeq} • ${selectedCustomer?.shopName || selectedCustomer?.shop_name || 'Outlet'} (Type #, Name, Owner...)`
     : 'Search by shop #, name, or owner...';
 
   // Zero-Sale Call state
@@ -647,9 +651,9 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               onChange={(e) => setSelectedRouteName(e.target.value)}
               className="w-full min-h-[48px] h-12 bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
             >
-              {routeOptions.map((r) => (
-                <option key={r.id} value={r.name}>
-                  {r.code ? `[${r.code}] ` : ''}{r.name}
+              {routeOptions.filter(Boolean).map((r) => (
+                <option key={r?.id || r?.name} value={r?.name || ''}>
+                  {r?.code ? `[${r.code}] ` : ''}{safeLabel(r)}
                 </option>
               ))}
             </select>
@@ -772,13 +776,14 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                       </button>
                     </div>
                   ) : (
-                    searchedShops.map((item, idx) => {
+                    searchedShops.filter(Boolean).map((item, idx) => {
+                      if (!item || !item.customer) return null;
                       const isSelected = item.customer.id === selectedCustomerId;
                       const isHighlighted = idx === highlightedIndex;
 
                       return (
                         <button
-                          key={item.customer.id}
+                          key={item.customer.id || Math.random().toString()}
                           type="button"
                           onClick={() => handleSelectCustomer(item.customer)}
                           onMouseEnter={() => setHighlightedIndex(idx)}
@@ -1307,7 +1312,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
             <div className="border border-slate-200 rounded-xl p-2 bg-slate-50 flex justify-center overflow-x-auto">
               <Thermal80mmReceipt
                 order={savedOrder}
-                customer={selectedCustomer}
+                customer={selectedCustomer || undefined}
                 showPrintButton={true}
               />
             </div>

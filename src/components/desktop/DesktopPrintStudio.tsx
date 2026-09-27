@@ -27,7 +27,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { BankAccount, CompanyProfile, Customer, Order, SalesRoute, RoznamchaEntry } from '../../types';
-import { formatPKR, formatDateTime } from '../../utils/calculations';
+import { formatPKR, formatDateTime, safeLabel } from '../../utils/calculations';
 import { RouteDeliverySummaryEngine } from './RouteDeliverySummaryEngine';
 import { extractShopSequence } from '../../utils/sequenceNumbering';
 
@@ -287,22 +287,24 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                 { id: 'ledger', label: 'Ledger & Roznamcha (26)' },
                 { id: 'hr', label: 'HR & Payroll (18)' },
                 { id: 'partners', label: 'Partners & Zakat (18)' },
-              ].map((cat) => (
+              ].filter(Boolean).map((cat) => (
                 <button
-                  key={cat.id}
+                  key={cat?.id || Math.random().toString()}
                   onClick={() => {
-                    setActiveCategory(cat.id);
-                    if (cat.id === 'summary') {
-                      setPresetCode('REC-SUM-01');
+                    if (cat?.id) {
+                      setActiveCategory(cat.id);
+                      if (cat.id === 'summary') {
+                        setPresetCode('REC-SUM-01');
+                      }
                     }
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                    activeCategory === cat.id
+                    activeCategory === cat?.id
                       ? 'bg-amber-600 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  {cat.label}
+                  {safeLabel(cat)}
                 </button>
               ))}
             </div>
