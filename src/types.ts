@@ -40,6 +40,10 @@ export interface Product {
   minStockAlert: number;
   barcode?: string;
   taxSchedule?: string; // e.g. "3rd Sch (MRP)" or "18% GST"
+  batchNumber?: string; // FEFO Batch e.g. "B-104"
+  expiryDate?: string; // e.g. "2026-11-30" or "Nov 2026"
+  supplierScheme?: string; // e.g. "5%" or "Nil"
+  warehouseLocation?: string; // e.g. "Mingora Central - Bay 4A"
 }
 
 export type ChannelType =
