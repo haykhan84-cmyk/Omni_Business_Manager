@@ -22,7 +22,7 @@ import { Customer, Order, OrderItem, Product, SalesRoute, RouteStop, ZeroSaleCal
 import { calculateOrderItem, formatPKR, formatAmount, formatRate } from '../../utils/calculations';
 import { Thermal80mmReceipt } from '../shared/PrintTemplates';
 import { getTenantRoutes, getTenantRouteStops, logZeroSaleCall, ACTIVE_TENANT_ID } from '../../db/localDb';
-import { getNextSequenceNumber, formatInvoiceId, formatShopId } from '../../utils/sequenceNumbering';
+import { getNextSequenceNumber, formatInvoiceId, formatShopId, extractShopSequence } from '../../utils/sequenceNumbering';
 
 interface MobileOrderBookingProps {
   products: Product[];
@@ -431,7 +431,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               ) : (
                 routeCustomers.map((c, idx) => (
                   <option key={c.id} value={c.id}>
-                    Stop #{idx + 1} • Shop #{c.shopNumber || (idx + 1)}: {c.shopName} ({c.name})
+                    Shop #{extractShopSequence(c, idx)}: {c.shopName} ({c.name})
                   </option>
                 ))
               )}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Customer, Order } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
+import { extractShopSequence } from '../../utils/sequenceNumbering';
 
 interface ThermalReceiptProps {
   order: Order;
@@ -59,7 +60,7 @@ export const Thermal80mmReceipt: React.FC<ThermalReceiptProps> = ({
             BILL / {order.orderNo.toUpperCase().includes('INVOICE') || order.orderNo.toUpperCase().includes('BILL') ? order.orderNo.toUpperCase() : `INVOICE #${order.orderNo}`}
           </div>
           <div className="text-[10px] text-gray-200 mt-0.5 font-sans font-bold">
-            {order.route} • {customer?.shopNumber ? `Shop #${customer.shopNumber} ` : ''}({order.shopName})
+            {order.route} • Shop #{extractShopSequence(customer)} ({order.shopName})
           </div>
         </div>
 
@@ -80,7 +81,7 @@ export const Thermal80mmReceipt: React.FC<ThermalReceiptProps> = ({
           <div className="flex justify-between">
             <span>CLIENT / SHOP:</span>
             <span className="font-bold truncate max-w-[170px]">
-              {customer?.shopNumber ? `Shop #${customer.shopNumber}: ` : ''}{order.shopName}
+              Shop #{extractShopSequence(customer)}: {order.shopName}
             </span>
           </div>
           {order.bookerName && (
@@ -242,7 +243,7 @@ export const A4DeliveryInvoice: React.FC<A4DeliveryInvoiceProps> = ({
               BILL / {order.orderNo.toUpperCase().includes('INVOICE') || order.orderNo.toUpperCase().includes('BILL') ? order.orderNo.toUpperCase() : `INVOICE #${order.orderNo}`}
             </span>
             <div className="text-xs font-bold text-gray-800">
-              {order.route} • {customer?.shopNumber ? `Shop #${customer.shopNumber} ` : ''}({order.shopName})
+              {order.route} • Shop #{extractShopSequence(customer)} ({order.shopName})
             </div>
             <div className="text-xs text-gray-600 mt-1">
               Date: {formatDateTime(order.date)}
@@ -260,7 +261,7 @@ export const A4DeliveryInvoice: React.FC<A4DeliveryInvoiceProps> = ({
               Bill To &amp; Delivery Destination:
             </h3>
             <div className="text-base font-bold text-gray-900">
-              {customer?.shopNumber ? `Shop #${customer.shopNumber}: ` : ''}{order.shopName}
+              Shop #{extractShopSequence(customer)}: {order.shopName}
             </div>
             <div className="text-xs text-gray-700 font-medium">Attn: {order.customerName}</div>
             <div className="text-xs text-gray-600">{customer?.address || 'Mingora Bazaar'}</div>

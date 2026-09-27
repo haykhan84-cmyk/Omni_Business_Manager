@@ -20,6 +20,7 @@ import {
 import { Customer, Order, RoznamchaEntry, SalesRoute, UserAccount } from '../../types';
 import { formatAmount, formatPKR, formatDateTime } from '../../utils/calculations';
 import { Thermal80mmReceipt } from '../shared/PrintTemplates';
+import { extractShopSequence } from '../../utils/sequenceNumbering';
 
 interface MobileRouteSyncProps {
   orders: Order[];
@@ -220,9 +221,9 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none"
               >
                 <option value="">Select Retailer Visited...</option>
-                {customers.map((c) => (
+                {customers.map((c, idx) => (
                   <option key={c.id} value={c.id}>
-                    {c.shopName} ({c.name})
+                    Shop #{extractShopSequence(c, idx)}: {c.shopName} ({c.name})
                   </option>
                 ))}
               </select>
@@ -266,8 +267,8 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
                 {customers.map((c, idx) => (
                   <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[10px] font-bold flex items-center justify-center shrink-0">
-                        {idx + 1}
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 font-mono text-[10px] font-black shrink-0">
+                        Shop #{extractShopSequence(c, idx)}
                       </span>
                       <div>
                         <div className="font-extrabold text-slate-900">{c.shopName}</div>

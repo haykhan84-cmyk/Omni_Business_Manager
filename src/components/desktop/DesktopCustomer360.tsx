@@ -50,8 +50,10 @@ import { db } from '../../db';
 import { syncCustomersToSupabase } from '../../db/supabase';
 import {
   getNextSequenceNumber,
+  getNextShopSequenceNumber,
   formatShopId,
   extractSequenceNumber,
+  extractShopSequence,
 } from '../../utils/sequenceNumbering';
 import {
   parseCustomerCsv,
@@ -639,10 +641,10 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
     setIsCommittingImport(true);
     try {
-      const startSeqNum = getNextSequenceNumber(customers, (c) => c.shopNumber || c.id);
+      const startSeqNum = getNextShopSequenceNumber(customers);
       const newCustomers: Customer[] = validRows.map((row, idx) => {
-        const assignedShopNum = startSeqNum + idx;
-        const custId = `cust-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`;
+        const assignedShopNum = row.shop_number || (startSeqNum + idx);
+        const custId = `cust-${Date.now()}-${assignedShopNum}-${Math.random().toString(36).slice(2, 6)}`;
         return {
           id: custId,
           tenant_id: ACTIVE_TENANT_ID,
@@ -728,7 +730,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
   const openAddModal = () => {
     setEditingCustomer(null);
-    const nextShopNum = getNextSequenceNumber(customers, (c) => c.shopNumber || c.id);
+    const nextShopNum = getNextShopSequenceNumber(customers);
     setFormShopNumber(nextShopNum);
     setFormShopName('');
     setFormName('');
@@ -752,7 +754,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
   const openEditModal = (c: Customer) => {
     setEditingCustomer(c);
-    setFormShopNumber(c.shopNumber || extractSequenceNumber(c.id) || 1);
+    setFormShopNumber(extractShopSequence(c));
     setFormShopName(c.shopName);
     setFormName(c.name);
     setFormRoute(c.route);
@@ -1271,14 +1273,24 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                         <td className="p-3 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-mono font-bold text-[11px] shadow-2xs">
-                              Shop #{c.shopNumber || extractSequenceNumber(c.id) || (idx + 1)}
+                              Shop #{extractShopSequence(c, idx)}
                             </span>
                             <span className="font-bold text-slate-900">{c.shopName}</span>
                           </div>
                           <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                            <span className="font-mono text-amber-800 font-semibold">{c.id}</span>
-                            <span>•</span>
-                            <span>Proprietor: {c.name}</span>
+                            <span className="font-semibold text-slate-700">Proprietor: {c.name}</span>
+                            {c.phone && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono text-slate-500">{c.phone}</span>
+                              </>
+                            )}
+                            {c.channel_type && (
+                              <>
+                                <span>•</span>
+                                <span className="text-slate-500">{c.channel_type}</span>
+                              </>
+                            )}
                           </div>
                         </td>
 
@@ -1444,13 +1456,9 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
             <div className="p-5 bg-gradient-to-br from-slate-900 to-slate-800 text-white relative">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-amber-400">
-                      {selectedCustomer.id}
-                    </span>
-                    <span className="text-slate-400">•</span>
-                    <span className="text-xs text-slate-300">
-                      {selectedCustomer.zone || 'Mingora Central Sector'}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-black text-amber-300 bg-amber-950/80 px-2.5 py-0.5 rounded-lg border border-amber-600/40 shadow-xs">
+                      Shop #{extractShopSequence(selectedCustomer)} • {selectedCustomer.route || selectedCustomer.zone || 'Main Beat'}
                     </span>
                   </div>
                   <h2 className="text-xl font-black text-white mt-1">
@@ -1915,7 +1923,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                   <span className="text-emerald-400">ACK 200 OK</span>
                 </div>
                 <div className="truncate">
-                  POST /api/v2/retailer/{selectedCustomer.id}/sync • TTL: 0.04s • Multi-Region
+                  POST /api/v2/retailer/shop-{extractShopSequence(selectedCustomer)}/sync • TTL: 0.04s • Multi-Region
                 </div>
                 <div className="text-slate-500 truncate">
                   SHA-256: 8a92f0...c4e1 • Raast IBAN: PK92MEZN00010420088910
@@ -2415,7 +2423,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                 <div className="text-right space-y-0.5 font-mono">
                   <div className="text-[11px]">
-                    Customer ID: <strong className="text-slate-900">{selectedCustomer.id}</strong>
+                    Shop Identifier: <strong className="text-slate-900 font-bold">Shop #{extractShopSequence(selectedCustomer)}</strong>
                   </div>
                   <div className="text-[11px]">
                     NTN: {selectedCustomer.ntn || 'Pending'}
@@ -2613,7 +2621,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
       {/* MODAL 5: BULK IMPORT (CSV & DRAG-AND-DROP)                                */}
       {/* ========================================================================= */}
       {isImportModalOpen && (() => {
-        const startSeqNum = getNextSequenceNumber(customers, (c) => c.shopNumber || c.id);
+        const startSeqNum = getNextShopSequenceNumber(customers);
         let validCounter = 0;
         const validIndices = importParsedRows.map((r) => {
           if (r.isValid) {
@@ -2784,7 +2792,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                         <tbody className="divide-y divide-slate-200 font-mono text-slate-800">
                           {importParsedRows.map((row, idx) => {
                             const isError = !row.isValid;
-                            const assignedShopNum = row.isValid ? startSeqNum + validIndices[idx] : null;
+                            const assignedShopNum = row.shop_number || (row.isValid ? startSeqNum + validIndices[idx] : null);
 
                             return (
                               <tr

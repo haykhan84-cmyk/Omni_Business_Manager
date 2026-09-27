@@ -29,6 +29,7 @@ import {
 import { BankAccount, CompanyProfile, Customer, Order, SalesRoute, RoznamchaEntry } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
 import { RouteDeliverySummaryEngine } from './RouteDeliverySummaryEngine';
+import { extractShopSequence } from '../../utils/sequenceNumbering';
 
 interface DesktopPrintStudioProps {
   orders: Order[];
@@ -711,7 +712,7 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                           BILL / {docNumber.toUpperCase().includes('BILL') || docNumber.toUpperCase().includes('INVOICE') ? docNumber.toUpperCase() : `INVOICE #${docNumber}`}
                         </span>
                         <div className="text-xs font-bold text-amber-700">
-                          {selectedOrder?.route || 'Route'} • {selectedCustomer?.shopNumber ? `Shop #${selectedCustomer.shopNumber} ` : ''}({selectedOrder?.shopName || 'Shop'})
+                          {selectedOrder?.route || 'Route'} • Shop #{extractShopSequence(selectedCustomer)} ({selectedOrder?.shopName || 'Shop'})
                         </div>
                         {showUrduHeadings && (
                           <span className="text-[12px] font-bold text-slate-600">
@@ -1018,7 +1019,7 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
                       BILL / {docNumber.toUpperCase().includes('BILL') || docNumber.toUpperCase().includes('INVOICE') ? docNumber.toUpperCase() : `INVOICE #${docNumber}`}
                     </div>
                     <div className="text-[10px] font-bold">
-                      {selectedOrder?.route} • {selectedCustomer?.shopNumber ? `Shop #${selectedCustomer.shopNumber} ` : ''}({selectedOrder?.shopName})
+                      {selectedOrder?.route} • Shop #{extractShopSequence(selectedCustomer)} ({selectedOrder?.shopName})
                     </div>
                     <div className="text-[9px] text-gray-500">
                       Date: {formatDateTime(selectedOrder?.date || new Date().toISOString())}
@@ -1027,7 +1028,7 @@ export const DesktopPrintStudio: React.FC<DesktopPrintStudioProps> = ({
 
                   <div className="my-1.5 border-b border-black border-dashed"></div>
                   <div className="text-[10px]">
-                    <div>Client: {selectedCustomer?.shopNumber ? `Shop #${selectedCustomer.shopNumber}: ` : ''}{selectedOrder?.shopName}</div>
+                    <div>Client: Shop #{extractShopSequence(selectedCustomer)}: {selectedOrder?.shopName}</div>
                     <div>Route: {selectedOrder?.route}</div>
                     <div>Booker: {selectedOrder?.bookerName || selectedOrder?.salesmanName || 'Field Sales Officer'}</div>
                   </div>

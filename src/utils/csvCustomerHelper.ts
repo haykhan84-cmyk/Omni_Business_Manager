@@ -1,8 +1,9 @@
 import { Customer, ChannelType } from '../types';
-import { extractSequenceNumber } from './sequenceNumbering';
+import { extractSequenceNumber, extractShopSequence, formatShopId } from './sequenceNumbering';
 
 export interface ParsedCustomerRow {
   rowNumber: number;
+  shop_number?: number;
   shop_name: string;
   owner_name: string;
   phone: string;
@@ -125,6 +126,7 @@ export function parseCustomerCsv(csvContent: string): {
     );
   };
 
+  const shopNumIdx = getColIdx(['shop#', 'shopno', 'shopnumber', 'shopnum', 'sr', 'srno', 'sno', 'shopid']);
   const shopNameIdx = getColIdx(['shopname', 'shop', 'outlet', 'retailer', 'store']);
   const ownerNameIdx = getColIdx(['ownername', 'owner', 'proprietor', 'contactname', 'name']);
   const phoneIdx = getColIdx(['phone', 'mobile', 'contact', 'cell', 'tel']);
@@ -141,6 +143,8 @@ export function parseCustomerCsv(csvContent: string): {
     // Skip empty lines
     if (raw.every((field) => !field.trim())) continue;
 
+    const rawShopNum = shopNumIdx >= 0 ? raw[shopNumIdx] : '';
+    const parsedShopNum = rawShopNum ? extractSequenceNumber(rawShopNum) : undefined;
     const shopName = shopNameIdx >= 0 ? (raw[shopNameIdx] || '').trim() : '';
     const ownerName = ownerNameIdx >= 0 ? (raw[ownerNameIdx] || '').trim() : '';
     const phone = phoneIdx >= 0 ? (raw[phoneIdx] || '').trim() : '';
@@ -170,6 +174,7 @@ export function parseCustomerCsv(csvContent: string): {
 
     parsedRows.push({
       rowNumber: i,
+      shop_number: parsedShopNum && parsedShopNum > 0 ? parsedShopNum : undefined,
       shop_name: shopName,
       owner_name: ownerName || shopName,
       phone,
@@ -299,8 +304,8 @@ export function exportCustomersToCsv(
   ];
 
   const rows = filtered.map((c, idx) => {
-    const shopNum = c.shopNumber || extractSequenceNumber(c.id) || idx + 1;
-    const shopFormatted = `Shop #${shopNum}`;
+    const shopNum = extractShopSequence(c, idx);
+    const shopFormatted = formatShopId(shopNum);
     const shopName = c.shopName || c.shop_name || 'Retail Store';
     const ownerName = c.name || c.owner_name || '';
     const phone = c.phone || '';

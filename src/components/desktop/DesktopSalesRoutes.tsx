@@ -65,6 +65,7 @@ import {
   formatRouteId,
   formatGatePassId,
   extractSequenceNumber,
+  extractShopSequence,
 } from '../../utils/sequenceNumbering';
 
 interface DesktopSalesRoutesProps {
@@ -2036,7 +2037,7 @@ export const DesktopSalesRoutes: React.FC<DesktopSalesRoutesProps> = ({
                         ).map((ord, idx) => {
                           const billNum = extractSequenceNumber(ord.orderNo) || ord.invoiceNumber || (idx + 1);
                           const cust = customers.find((c) => c.id === ord.customerId);
-                          const shopNum = cust?.shopNumber || extractSequenceNumber(cust?.id || ord.customerId) || (idx + 1);
+                          const shopNum = extractShopSequence(cust, idx);
                           return (
                             <tr key={ord.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                               <td className="py-2.5 px-3 font-bold text-amber-800">

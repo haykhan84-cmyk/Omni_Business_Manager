@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { Customer, Order, RoznamchaCategory, RoznamchaEntry, BankAccount, CompanyProfile, GRNDocket } from '../../types';
 import { formatPKR, formatDateTime, formatDate } from '../../utils/calculations';
+import { extractShopSequence } from '../../utils/sequenceNumbering';
 
 interface DesktopRoznamchaProps {
   entries: RoznamchaEntry[];
@@ -1007,9 +1008,9 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                     onChange={(e) => setSelectedCustomerId(e.target.value)}
                     className="bg-white border border-amber-300 font-bold text-sm text-slate-900 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500"
                   >
-                    {customers.map((c) => (
+                    {customers.map((c, idx) => (
                       <option key={c.id} value={c.id}>
-                        {c.shopName} ({c.name}) - Route: {c.route}
+                        Shop #{extractShopSequence(c, idx)}: {c.shopName} ({c.name}) - Route: {c.route}
                       </option>
                     ))}
                   </select>
@@ -1621,9 +1622,9 @@ export const DesktopRoznamcha: React.FC<DesktopRoznamchaProps> = ({
                       onChange={(e) => setVoucherCustomerId(e.target.value)}
                       className="w-full h-10 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 px-3 focus:outline-none"
                     >
-                      {customers.map((c) => (
+                      {customers.map((c, idx) => (
                         <option key={c.id} value={c.id}>
-                          {c.shopName} ({c.name}) — Due: Rs. {c.currentBalance.toLocaleString()}
+                          Shop #{extractShopSequence(c, idx)}: {c.shopName} ({c.name}) — Due: Rs. {c.currentBalance.toLocaleString()}
                         </option>
                       ))}
                     </select>

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Customer, RoznamchaEntry, UserAccount } from '../../types';
 import { formatAmount, formatPKR, formatDateTime } from '../../utils/calculations';
+import { extractShopSequence } from '../../utils/sequenceNumbering';
 
 interface MobileCashInProps {
   customers: Customer[];
@@ -164,9 +165,9 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
             {filteredCustomers.length === 0 ? (
               <option value="">No matching shops found</option>
             ) : (
-              filteredCustomers.map((c) => (
+              filteredCustomers.map((c, idx) => (
                 <option key={c.id} value={c.id}>
-                  {c.shopName} - {c.name} ({c.route}) • Bal: {formatAmount(c.currentBalance)}
+                  Shop #{extractShopSequence(c, idx)}: {c.shopName} - {c.name} ({c.route}) • Bal: {formatAmount(c.currentBalance)}
                 </option>
               ))
             )}
@@ -177,7 +178,12 @@ export const MobileCashIn: React.FC<MobileCashInProps> = ({
         {selectedCustomer && (
           <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between text-xs w-full">
             <div>
-              <div className="font-extrabold text-slate-900">{selectedCustomer.shopName}</div>
+              <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-mono text-[10px] font-bold">
+                  Shop #{extractShopSequence(selectedCustomer)}
+                </span>
+                <span>{selectedCustomer.shopName}</span>
+              </div>
               <div className="text-[11px] text-slate-500">
                 {selectedCustomer.name} • {selectedCustomer.phone}
               </div>

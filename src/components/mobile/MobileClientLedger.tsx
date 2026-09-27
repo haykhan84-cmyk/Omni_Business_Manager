@@ -19,7 +19,7 @@ import {
 import { Customer, Order, RoznamchaEntry } from '../../types';
 import { formatPKR, formatDateTime } from '../../utils/calculations';
 import { parseCustomerCsv } from '../../utils/csvCustomerHelper';
-import { getNextSequenceNumber } from '../../utils/sequenceNumbering';
+import { getNextSequenceNumber, extractShopSequence, getNextShopSequenceNumber } from '../../utils/sequenceNumbering';
 import { db } from '../../db';
 import { syncCustomersToSupabase } from '../../db/supabase';
 import { ACTIVE_TENANT_ID } from '../../db/localDb';
@@ -74,10 +74,10 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
         return;
       }
 
-      const startSeqNum = getNextSequenceNumber(customers, (c) => c.shopNumber || c.id);
+      const startSeqNum = getNextShopSequenceNumber(customers);
       const newCustomers: Customer[] = validRows.map((row, idx) => {
-        const assignedShopNum = startSeqNum + idx;
-        const custId = `cust-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`;
+        const assignedShopNum = row.shop_number || (startSeqNum + idx);
+        const custId = `cust-${Date.now()}-${assignedShopNum}-${Math.random().toString(36).slice(2, 6)}`;
         return {
           id: custId,
           tenant_id: ACTIVE_TENANT_ID,
@@ -179,9 +179,13 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
     e.preventDefault();
     if (!newShopName.trim() || !newProprietor.trim()) return;
 
+    const nextShopSeq = getNextShopSequenceNumber(customers);
     await onAddCustomer({
       name: newProprietor.trim(),
+      owner_name: newProprietor.trim(),
       shopName: newShopName.trim(),
+      shop_name: newShopName.trim(),
+      shopNumber: nextShopSeq,
       route: newRoute,
       phone: newPhone.trim() || '0300-0000000',
       address: newAddress.trim() || 'Main Bazaar',
@@ -336,6 +340,9 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
               <div className="flex justify-between items-start gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded shadow-2xs">
+                      Shop #{extractShopSequence(cust, idx)}
+                    </span>
                     <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
                       {cust.route}
                     </span>
@@ -567,6 +574,16 @@ export const MobileClientLedger: React.FC<MobileClientLedgerProps> = ({
             </div>
 
             <form onSubmit={handleCreateCustomer} className="space-y-3 text-xs">
+              {/* Pre-filled Sequential Shop Number Indicator */}
+              <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center justify-between">
+                <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wide">
+                  Assigned Shop Number
+                </span>
+                <span className="font-mono font-black text-amber-950 text-xs px-2.5 py-1 bg-amber-200/80 border border-amber-300 rounded-lg shadow-2xs">
+                  Shop #{getNextShopSequenceNumber(customers)}
+                </span>
+              </div>
+
               <div>
                 <label className="block font-bold text-slate-700 uppercase mb-1">
                   Shop / Trade Name *

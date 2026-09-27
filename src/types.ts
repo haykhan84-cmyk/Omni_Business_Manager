@@ -56,6 +56,7 @@ export interface Customer {
   id: string;
   tenant_id?: string;
   shopNumber?: number; // Shop #1, Shop #2...
+  shop_number?: number;
   name: string; // Owner / Contact Name
   owner_name?: string;
   shopName: string; // Outlet / Shop Name
