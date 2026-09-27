@@ -486,8 +486,8 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
 
       {/* Field Zero-Sale Modal */}
       {showZeroSaleModal && selectedCustomer && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 text-white w-full max-w-md rounded-2xl p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-slate-900 border border-slate-800 text-white w-full sm:max-w-md rounded-2xl p-5 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <Ban className="w-5 h-5 text-amber-500" />
@@ -514,7 +514,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                 <select
                   value={zeroSaleReason}
                   onChange={(e) => setZeroSaleReason(e.target.value as any)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-white text-xs focus:outline-none focus:border-amber-500"
+                  className="w-full min-h-[48px] h-12 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
                 >
                   <option value="Sufficient Stock">Sufficient Stock (No replenishment required)</option>
                   <option value="Shop Closed">Shop Closed (Shutter down)</option>
@@ -532,23 +532,23 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                   onChange={(e) => setZeroSaleNotes(e.target.value)}
                   placeholder="e.g., Shop owner promised to clear ledger on next Tuesday visit"
                   rows={2}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-white text-xs focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowZeroSaleModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded-xl"
+                  className="w-full min-h-[48px] h-12 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded-xl font-bold flex items-center justify-center cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl"
+                  className="w-full min-h-[48px] h-12 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl flex items-center justify-center cursor-pointer shadow-md"
                 >
-                  Save Zero-Sale
+                  Save Call Log
                 </button>
               </div>
             </form>
@@ -780,7 +780,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
       {/* Floating Bottom Cart Review Bar - Anchored above bottom navigation */}
       {cartItems.length > 0 && (
         <div className="fixed bottom-16 left-0 right-0 w-full bg-slate-900/98 backdrop-blur-md border-t border-slate-800 p-3 shadow-2xl text-white z-40">
-          <div className="w-full max-w-xl mx-auto space-y-2.5">
+          <div className="w-full sm:max-w-xl mx-auto space-y-2.5">
             {/* Quick Math Breakdown */}
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-300 whitespace-nowrap">
@@ -803,9 +803,9 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               <button
                 type="button"
                 onClick={() => setPaymentType('credit')}
-                className={`min-h-[44px] py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center ${
+                className={`min-h-[48px] h-12 py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center flex items-center justify-center ${
                   paymentType === 'credit'
-                    ? 'bg-amber-600 border-amber-500 text-white'
+                    ? 'bg-amber-600 border-amber-500 text-white shadow-sm'
                     : 'bg-slate-800 border-slate-700 text-slate-300'
                 }`}
               >
@@ -814,9 +814,9 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               <button
                 type="button"
                 onClick={() => setPaymentType('cash')}
-                className={`min-h-[44px] py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center ${
+                className={`min-h-[48px] h-12 py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center flex items-center justify-center ${
                   paymentType === 'cash'
-                    ? 'bg-emerald-600 border-emerald-500 text-white'
+                    ? 'bg-emerald-600 border-emerald-500 text-white shadow-sm'
                     : 'bg-slate-800 border-slate-700 text-slate-300'
                 }`}
               >
@@ -825,9 +825,9 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
               <button
                 type="button"
                 onClick={() => setPaymentType('partial')}
-                className={`min-h-[44px] py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center ${
+                className={`min-h-[48px] h-12 py-2 rounded-xl font-bold border transition-colors cursor-pointer text-center flex items-center justify-center ${
                   paymentType === 'partial'
-                    ? 'bg-blue-600 border-blue-500 text-white'
+                    ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
                     : 'bg-slate-800 border-slate-700 text-slate-300'
                 }`}
               >

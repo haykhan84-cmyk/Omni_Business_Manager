@@ -107,7 +107,7 @@ export const MobileRoznamcha: React.FC<MobileRoznamchaProps> = ({
   ];
 
   return (
-    <div className="flex flex-col space-y-4 pb-20">
+    <div className="flex flex-col space-y-4 pb-28 w-full overflow-x-hidden">
       {/* Live Vault Balance Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white shadow-md">
         <div className="flex items-center justify-between">
@@ -449,8 +449,8 @@ export const MobileRoznamcha: React.FC<MobileRoznamchaProps> = ({
 
       {/* Safety Confirmation Modal */}
       {entryToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full border border-slate-200 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full sm:max-w-sm border border-slate-200 overflow-hidden">
             <div className="p-5">
               <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-3">
                 <Trash2 className="w-6 h-6" />
@@ -481,11 +481,11 @@ export const MobileRoznamcha: React.FC<MobileRoznamchaProps> = ({
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+            <div className="p-4 bg-slate-50 border-t border-slate-100 grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => setEntryToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+                className="w-full min-h-[48px] h-12 rounded-xl text-xs font-bold text-slate-700 bg-slate-200 hover:bg-slate-300 transition-colors cursor-pointer flex items-center justify-center"
               >
                 Cancel
               </button>
@@ -497,7 +497,7 @@ export const MobileRoznamcha: React.FC<MobileRoznamchaProps> = ({
                   }
                   setEntryToDelete(null);
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
+                className="w-full min-h-[48px] h-12 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors cursor-pointer flex items-center justify-center"
               >
                 Permanently Delete
               </button>

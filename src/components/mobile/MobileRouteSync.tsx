@@ -285,7 +285,7 @@ export const MobileRouteSync: React.FC<MobileRouteSyncProps> = ({
                       </div>
                       <button
                         onClick={() => onSelectCustomerForOrder(c)}
-                        className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs cursor-pointer transition-all shadow-2xs"
+                        className="min-h-[48px] h-12 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-black text-xs cursor-pointer transition-all shadow-md flex items-center justify-center shrink-0"
                       >
                         Book
                       </button>

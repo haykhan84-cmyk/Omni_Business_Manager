@@ -77,8 +77,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, isOnli
   };
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950/40 flex flex-col items-center justify-center p-4 sm:p-6 text-slate-100">
-      <div className="w-full max-w-md mx-auto">
+    <div className="min-h-screen min-h-[100dvh] w-full bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950/40 flex flex-col items-center justify-center p-3 sm:p-6 text-slate-100 overflow-x-hidden">
+      <div className="w-full sm:max-w-md mx-auto">
         {/* Brand Header */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-500 shadow-xl shadow-amber-600/30 mb-3 border border-amber-400/40">
@@ -117,7 +117,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, isOnli
         </div>
 
         {/* Auth Card */}
-        <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/60">
+        <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-2xl shadow-black/60 w-full">
           <div className="mb-5 pb-3 border-b border-slate-800 flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-white">Employee Sign In</h2>
@@ -133,7 +133,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, isOnli
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 w-full">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
                 Employee ID or Mobile
@@ -148,7 +148,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, isOnli
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   placeholder="e.g. EMP-101 or 0300-1122334"
-                  className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all font-mono"
+                  className="w-full min-h-[48px] h-12 bg-slate-950/80 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all font-mono"
                   autoComplete="username"
                 />
               </div>
@@ -169,13 +169,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, isOnli
                   onChange={(e) => setPin(e.target.value)}
                   placeholder="••••"
                   maxLength={10}
-                  className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-10 pr-11 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all font-mono tracking-widest"
+                  className="w-full min-h-[48px] h-12 bg-slate-950/80 border border-slate-700 rounded-xl pl-10 pr-11 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all font-mono tracking-widest"
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPin(!showPin)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 cursor-pointer"
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 cursor-pointer min-h-[48px] px-2"
                   tabIndex={-1}
                 >
                   {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -198,7 +198,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, isOnli
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 active:scale-[0.99] text-white font-extrabold rounded-xl shadow-lg shadow-amber-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm disabled:opacity-50"
+              className="w-full min-h-[48px] h-12 px-4 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 active:scale-[0.99] text-white font-extrabold rounded-xl shadow-lg shadow-amber-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm disabled:opacity-50"
             >
               {isSubmitting ? (
                 <span>Authenticating...</span>
