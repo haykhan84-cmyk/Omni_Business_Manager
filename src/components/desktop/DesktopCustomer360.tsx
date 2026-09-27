@@ -142,6 +142,131 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
   });
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
 
+  // Column Widths & Resizing State
+  const defaultColumnWidths: Record<string, number> = useMemo(
+    () => ({
+      select: 44,
+      customerId: 110,
+      name: 220,
+      route: 130,
+      category: 140,
+      creditLimit: 110,
+      limitPct: 100,
+      outstanding: 130,
+      aging: 115,
+      sync: 100,
+      actions: 115,
+    }),
+    []
+  );
+
+  const compactColumnWidths: Record<string, number> = useMemo(
+    () => ({
+      select: 34,
+      customerId: 80,
+      name: 150,
+      route: 90,
+      category: 95,
+      creditLimit: 85,
+      limitPct: 75,
+      outstanding: 90,
+      aging: 85,
+      sync: 75,
+      actions: 80,
+    }),
+    []
+  );
+
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    select: 44,
+    customerId: 110,
+    name: 220,
+    route: 130,
+    category: 140,
+    creditLimit: 110,
+    limitPct: 100,
+    outstanding: 130,
+    aging: 115,
+    sync: 100,
+    actions: 115,
+  });
+
+  const [isCompactDensity, setIsCompactDensity] = useState(false);
+  const columnMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const resizingColumnRef = React.useRef<{
+    colKey: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  // Close column dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (columnMenuRef.current && !columnMenuRef.current.contains(e.target as Node)) {
+        setIsColumnMenuOpen(false);
+      }
+    };
+    if (isColumnMenuOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isColumnMenuOpen]);
+
+  // Handle Drag to Resize Columns
+  const handleResizeStart = (colKey: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startWidth = columnWidths[colKey] || 100;
+    resizingColumnRef.current = {
+      colKey,
+      startX: e.clientX,
+      startWidth,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizingColumnRef.current) return;
+      const { colKey: key, startX, startWidth: sw } = resizingColumnRef.current;
+      const diff = moveEvent.clientX - startX;
+      // Allow minimization down to 40px, or expanding up to 600px
+      const newWidth = Math.max(40, Math.min(600, sw + diff));
+      setColumnWidths((prev) => ({
+        ...prev,
+        [key]: newWidth,
+      }));
+    };
+
+    const handleMouseUp = () => {
+      resizingColumnRef.current = null;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Calculate dynamic total table width for horizontal scroll
+  const totalTableWidth = useMemo(() => {
+    let width = columnWidths.select || 44;
+    if (visibleColumns.customerId) width += columnWidths.customerId || 110;
+    if (visibleColumns.name) width += columnWidths.name || 220;
+    if (visibleColumns.route) width += columnWidths.route || 130;
+    if (visibleColumns.category) width += columnWidths.category || 140;
+    if (visibleColumns.creditLimit) width += columnWidths.creditLimit || 110;
+    if (visibleColumns.limitPct) width += columnWidths.limitPct || 100;
+    if (visibleColumns.outstanding) width += columnWidths.outstanding || 130;
+    if (visibleColumns.aging) width += columnWidths.aging || 115;
+    if (visibleColumns.sync) width += columnWidths.sync || 100;
+    if (visibleColumns.actions) width += columnWidths.actions || 115;
+    return width;
+  }, [columnWidths, visibleColumns]);
+
   // Data Purge State
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
@@ -1308,7 +1433,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
             <div className="flex items-center gap-2 font-mono text-[11px] text-slate-500 flex-wrap">
               {/* Columns Visibility Dropdown */}
-              <div className="relative">
+              <div className="relative" ref={columnMenuRef}>
                 <button
                   type="button"
                   onClick={() => setIsColumnMenuOpen((prev) => !prev)}
@@ -1319,17 +1444,37 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                   <span>Columns ▾</span>
                 </button>
                 {isColumnMenuOpen && (
-                  <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 p-2.5 z-40 space-y-1 text-xs">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1 border-b border-slate-100">
-                      Show / Hide Columns
+                  <div className="absolute left-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 space-y-1.5 text-xs text-slate-200">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 pb-1.5 border-b border-slate-800 flex items-center justify-between">
+                      <span>Column Visibility</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleColumns({
+                            customerId: true,
+                            name: true,
+                            route: true,
+                            category: true,
+                            creditLimit: true,
+                            limitPct: true,
+                            outstanding: true,
+                            aging: true,
+                            sync: true,
+                            actions: true,
+                          })
+                        }
+                        className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer underline decoration-dotted"
+                      >
+                        Show All
+                      </button>
                     </div>
                     {[
                       { key: 'customerId', label: '1. Customer ID' },
-                      { key: 'name', label: '2. Name (Shop & Owner)' },
+                      { key: 'name', label: '2. Name (Shop)' },
                       { key: 'route', label: '3. Route' },
                       { key: 'category', label: '4. Category / Channel' },
                       { key: 'creditLimit', label: '5. Credit Limit' },
-                      { key: 'limitPct', label: '6. Limit %' },
+                      { key: 'limitPct', label: '6. Discount %' },
                       { key: 'outstanding', label: '7. Outstanding Balance' },
                       { key: 'aging', label: '8. Aging Risk' },
                       { key: 'sync', label: '9. Sync Status' },
@@ -1337,7 +1482,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                     ].map((col) => (
                       <label
                         key={col.key}
-                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-slate-700 select-none font-medium"
+                        className="flex items-center gap-2.5 px-2 py-1 hover:bg-slate-800 rounded-lg cursor-pointer text-slate-200 select-none text-xs font-medium transition-colors"
                       >
                         <input
                           type="checkbox"
@@ -1348,7 +1493,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                               [col.key]: e.target.checked,
                             })
                           }
-                          className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
+                          className="rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-400 w-4 h-4 cursor-pointer"
                         />
                         <span className="truncate">{col.label}</span>
                       </label>
@@ -1356,6 +1501,27 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                   </div>
                 )}
               </div>
+
+              {/* Compact Density Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCompactDensity((prev) => {
+                    const next = !prev;
+                    setColumnWidths(next ? compactColumnWidths : defaultColumnWidths);
+                    return next;
+                  });
+                }}
+                className={`px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs font-sans text-xs ${
+                  isCompactDensity
+                    ? 'bg-amber-100 border-amber-300 text-amber-900'
+                    : 'bg-white border-slate-300 hover:bg-slate-100 text-slate-700'
+                }`}
+                title="Toggle compact density viewing"
+              >
+                <Sliders className="w-3.5 h-3.5 text-slate-600" />
+                <span>{isCompactDensity ? 'Compact Density (ON)' : 'Compact Density'}</span>
+              </button>
 
               <button
                 type="button"
@@ -1374,12 +1540,23 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
             </div>
           </div>
 
-          {/* Table with Exact 10 Columns & Column Sorting */}
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-left border-collapse text-xs">
+          {/* Table with Exact 10 Columns, Resizable Headers & Density Support */}
+          <div className="overflow-x-auto w-full border-t border-slate-200">
+            <table
+              className="text-left border-collapse table-fixed w-full"
+              style={{ minWidth: totalTableWidth }}
+            >
               <thead>
-                <tr className="bg-slate-100 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
-                  <th className="p-3 w-8 text-center">
+                <tr className="bg-slate-100 text-slate-600 uppercase font-bold tracking-wider border-b border-slate-200 text-[10px]">
+                  {/* Select Checkbox Column */}
+                  <th
+                    style={{
+                      width: columnWidths.select,
+                      minWidth: columnWidths.select,
+                      maxWidth: columnWidths.select,
+                    }}
+                    className={`${isCompactDensity ? 'px-1.5 py-1' : 'p-3'} text-center select-none relative bg-slate-100 border-r border-slate-200`}
+                  >
                     <input
                       type="checkbox"
                       checked={
@@ -1395,165 +1572,299 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                       }}
                       className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
                     />
+                    <div
+                      onMouseDown={(e) => handleResizeStart('select', e)}
+                      className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                      title="Drag to resize"
+                    />
                   </th>
 
                   {/* Column 1: Customer ID */}
                   {visibleColumns.customerId && (
                     <th
-                      onClick={() => handleSort('customerId')}
-                      className="p-3 whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.customerId,
+                        minWidth: columnWidths.customerId,
+                        maxWidth: columnWidths.customerId,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center gap-1">
-                        <span>1. Customer ID</span>
+                      <div
+                        onClick={() => handleSort('customerId')}
+                        className="flex items-center gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Customer ID"
+                      >
+                        <span className="truncate">1. Customer ID</span>
                         {sortField === 'customerId' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('customerId', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Column 2: Name */}
                   {visibleColumns.name && (
                     <th
-                      onClick={() => handleSort('name')}
-                      className="p-3 whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.name,
+                        minWidth: columnWidths.name,
+                        maxWidth: columnWidths.name,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center gap-1">
-                        <span>2. Name</span>
+                      <div
+                        onClick={() => handleSort('name')}
+                        className="flex items-center gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Shop Name"
+                      >
+                        <span className="truncate">2. Name</span>
                         {sortField === 'name' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('name', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Column 3: Route */}
                   {visibleColumns.route && (
                     <th
-                      onClick={() => handleSort('route')}
-                      className="p-3 whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.route,
+                        minWidth: columnWidths.route,
+                        maxWidth: columnWidths.route,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center gap-1">
-                        <span>3. Route</span>
+                      <div
+                        onClick={() => handleSort('route')}
+                        className="flex items-center gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Route"
+                      >
+                        <span className="truncate">3. Route</span>
                         {sortField === 'route' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('route', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Column 4: Category / Channel */}
                   {visibleColumns.category && (
                     <th
-                      onClick={() => handleSort('category')}
-                      className="p-3 whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.category,
+                        minWidth: columnWidths.category,
+                        maxWidth: columnWidths.category,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center gap-1">
-                        <span>4. Category / Channel</span>
+                      <div
+                        onClick={() => handleSort('category')}
+                        className="flex items-center gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Category / Channel"
+                      >
+                        <span className="truncate">4. Category / Channel</span>
                         {sortField === 'category' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('category', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Column 5: Credit Limit */}
                   {visibleColumns.creditLimit && (
                     <th
-                      onClick={() => handleSort('creditLimit')}
-                      className="p-3 text-right whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.creditLimit,
+                        minWidth: columnWidths.creditLimit,
+                        maxWidth: columnWidths.creditLimit,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} text-right whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center justify-end gap-1">
-                        <span>5. Credit Limit</span>
+                      <div
+                        onClick={() => handleSort('creditLimit')}
+                        className="flex items-center justify-end gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Credit Limit"
+                      >
+                        <span className="truncate">5. Credit Limit</span>
                         {sortField === 'creditLimit' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('creditLimit', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Column 6: Limit % */}
                   {visibleColumns.limitPct && (
                     <th
-                      onClick={() => handleSort('limitPct')}
-                      className="p-3 text-center whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.limitPct,
+                        minWidth: columnWidths.limitPct,
+                        maxWidth: columnWidths.limitPct,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} text-center whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center justify-center gap-1">
-                        <span>6. Limit %</span>
+                      <div
+                        onClick={() => handleSort('limitPct')}
+                        className="flex items-center justify-center gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Limit Utilization %"
+                      >
+                        <span className="truncate">6. Limit %</span>
                         {sortField === 'limitPct' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('limitPct', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Columns 7 & 8: Outstanding Balance */}
                   {visibleColumns.outstanding && (
                     <th
-                      onClick={() => handleSort('outstanding')}
-                      className="p-3 text-right whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.outstanding,
+                        minWidth: columnWidths.outstanding,
+                        maxWidth: columnWidths.outstanding,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} text-right whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center justify-end gap-1">
-                        <span>7. Outstanding Balance</span>
+                      <div
+                        onClick={() => handleSort('outstanding')}
+                        className="flex items-center justify-end gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Outstanding Balance"
+                      >
+                        <span className="truncate">7. Outstanding</span>
                         {sortField === 'outstanding' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('outstanding', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Column 9: Aging Risk */}
                   {visibleColumns.aging && (
                     <th
-                      onClick={() => handleSort('aging')}
-                      className="p-3 text-center whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.aging,
+                        minWidth: columnWidths.aging,
+                        maxWidth: columnWidths.aging,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} text-center whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center justify-center gap-1">
-                        <span>8. Aging Risk</span>
+                      <div
+                        onClick={() => handleSort('aging')}
+                        className="flex items-center justify-center gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Aging Risk"
+                      >
+                        <span className="truncate">8. Aging Risk</span>
                         {sortField === 'aging' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('aging', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Column 10: Sync Status */}
                   {visibleColumns.sync && (
                     <th
-                      onClick={() => handleSort('sync')}
-                      className="p-3 text-center whitespace-nowrap cursor-pointer hover:bg-slate-200 transition-colors select-none"
+                      style={{
+                        width: columnWidths.sync,
+                        minWidth: columnWidths.sync,
+                        maxWidth: columnWidths.sync,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} text-center whitespace-nowrap select-none relative group bg-slate-100 hover:bg-slate-200 transition-colors border-r border-slate-200 truncate`}
                     >
-                      <div className="flex items-center justify-center gap-1">
-                        <span>9. Sync Status</span>
+                      <div
+                        onClick={() => handleSort('sync')}
+                        className="flex items-center justify-center gap-1 cursor-pointer truncate pr-1"
+                        title="Sort by Live Sync Status"
+                      >
+                        <span className="truncate">9. Sync Status</span>
                         {sortField === 'sync' ? (
-                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700" /> : <ArrowDown className="w-3 h-3 text-amber-700" />
+                          sortAsc ? <ArrowUp className="w-3 h-3 text-amber-700 shrink-0" /> : <ArrowDown className="w-3 h-3 text-amber-700 shrink-0" />
                         ) : (
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 shrink-0" />
                         )}
                       </div>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('sync', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
 
                   {/* Column 11: Actions */}
                   {visibleColumns.actions && (
-                    <th className="p-3 text-center whitespace-nowrap select-none">
-                      <span>10. Actions</span>
+                    <th
+                      style={{
+                        width: columnWidths.actions,
+                        minWidth: columnWidths.actions,
+                        maxWidth: columnWidths.actions,
+                      }}
+                      className={`${isCompactDensity ? 'px-2 py-1' : 'p-3'} text-center whitespace-nowrap select-none relative group bg-slate-100 truncate`}
+                    >
+                      <span className="truncate">10. Actions</span>
+                      <div
+                        onMouseDown={(e) => handleResizeStart('actions', e)}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none border-r border-slate-700 hover:border-amber-400 z-10"
+                        title="Drag to resize column"
+                      />
                     </th>
                   )}
                 </tr>
@@ -1606,6 +1917,8 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                         ? Math.min(100, Math.round(((c.currentBalance || 0) / c.creditLimit) * 100))
                         : 0;
 
+                    const rowPadding = isCompactDensity ? 'px-2 py-1' : 'p-3';
+
                     return (
                       <tr
                         key={c.id}
@@ -1618,7 +1931,12 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                       >
                         {/* Checkbox */}
                         <td
-                          className="p-3 text-center"
+                          style={{
+                            width: columnWidths.select,
+                            minWidth: columnWidths.select,
+                            maxWidth: columnWidths.select,
+                          }}
+                          className={`${rowPadding} text-center truncate`}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <input
@@ -1636,8 +1954,15 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                         {/* Column 1: Customer ID */}
                         {visibleColumns.customerId && (
-                          <td className="p-3 whitespace-nowrap font-mono font-bold text-slate-800">
-                            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 text-xs shadow-2xs">
+                          <td
+                            style={{
+                              width: columnWidths.customerId,
+                              minWidth: columnWidths.customerId,
+                              maxWidth: columnWidths.customerId,
+                            }}
+                            className={`${rowPadding} whitespace-nowrap font-mono font-bold text-slate-800 truncate overflow-hidden`}
+                          >
+                            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 text-xs shadow-2xs truncate inline-block max-w-full">
                               Shop #{extractShopSequence(c, idx)}
                             </span>
                           </td>
@@ -1645,11 +1970,18 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                         {/* Column 2: Name */}
                         {visibleColumns.name && (
-                          <td className="p-3 whitespace-nowrap">
-                            <div className="font-bold text-slate-900 text-xs">
+                          <td
+                            style={{
+                              width: columnWidths.name,
+                              minWidth: columnWidths.name,
+                              maxWidth: columnWidths.name,
+                            }}
+                            className={`${rowPadding} whitespace-nowrap truncate overflow-hidden`}
+                          >
+                            <div className="font-bold text-slate-900 text-xs truncate">
                               {c.shopName || c.shop_name || 'Retail Outlet'}
                             </div>
-                            <div className="text-[10px] text-slate-500 font-medium">
+                            <div className="text-[10px] text-slate-500 font-medium truncate">
                               {c.name || c.owner_name || 'Proprietor'}
                             </div>
                           </td>
@@ -1657,15 +1989,29 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                         {/* Column 3: Route */}
                         {visibleColumns.route && (
-                          <td className="p-3 whitespace-nowrap text-xs text-slate-700 font-semibold">
-                            {c.route}
+                          <td
+                            style={{
+                              width: columnWidths.route,
+                              minWidth: columnWidths.route,
+                              maxWidth: columnWidths.route,
+                            }}
+                            className={`${rowPadding} whitespace-nowrap text-xs text-slate-700 font-semibold truncate overflow-hidden`}
+                          >
+                            <span className="truncate block">{c.route}</span>
                           </td>
                         )}
 
                         {/* Column 4: Category / Channel */}
                         {visibleColumns.category && (
-                          <td className="p-3 whitespace-nowrap">
-                            <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          <td
+                            style={{
+                              width: columnWidths.category,
+                              minWidth: columnWidths.category,
+                              maxWidth: columnWidths.category,
+                            }}
+                            className={`${rowPadding} whitespace-nowrap truncate overflow-hidden`}
+                          >
+                            <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 truncate max-w-full">
                               {c.channel_type || 'General Store'}
                             </span>
                           </td>
@@ -1673,16 +2019,30 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                         {/* Column 5: Credit Limit */}
                         {visibleColumns.creditLimit && (
-                          <td className="p-3 text-right whitespace-nowrap font-mono text-xs font-semibold text-slate-700">
-                            {(c.creditLimit || 0).toLocaleString('en-PK')}
+                          <td
+                            style={{
+                              width: columnWidths.creditLimit,
+                              minWidth: columnWidths.creditLimit,
+                              maxWidth: columnWidths.creditLimit,
+                            }}
+                            className={`${rowPadding} text-right whitespace-nowrap font-mono text-xs font-semibold text-slate-700 truncate overflow-hidden`}
+                          >
+                            <span className="truncate block">{(c.creditLimit || 0).toLocaleString('en-PK')}</span>
                           </td>
                         )}
 
                         {/* Column 6: Limit % */}
                         {visibleColumns.limitPct && (
-                          <td className="p-3 text-center whitespace-nowrap">
+                          <td
+                            style={{
+                              width: columnWidths.limitPct,
+                              minWidth: columnWidths.limitPct,
+                              maxWidth: columnWidths.limitPct,
+                            }}
+                            className={`${rowPadding} text-center whitespace-nowrap truncate overflow-hidden`}
+                          >
                             <span
-                              className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-black border ${
+                              className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-black border truncate max-w-full ${
                                 utilPct >= 100 || c.status === 'credit_locked'
                                   ? 'bg-rose-100 text-rose-800 border-rose-200'
                                   : utilPct >= 71
@@ -1699,25 +2059,39 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                         {/* Columns 7 & 8: Outstanding Balance */}
                         {visibleColumns.outstanding && (
-                          <td className="p-3 text-right whitespace-nowrap font-mono text-xs font-bold text-slate-900">
-                            {(c.currentBalance || 0).toLocaleString('en-PK')}
+                          <td
+                            style={{
+                              width: columnWidths.outstanding,
+                              minWidth: columnWidths.outstanding,
+                              maxWidth: columnWidths.outstanding,
+                            }}
+                            className={`${rowPadding} text-right whitespace-nowrap font-mono text-xs font-bold text-slate-900 truncate overflow-hidden`}
+                          >
+                            <span className="truncate block">{(c.currentBalance || 0).toLocaleString('en-PK')}</span>
                           </td>
                         )}
 
                         {/* Column 9: Aging Risk */}
                         {visibleColumns.aging && (
-                          <td className="p-3 text-center whitespace-nowrap">
+                          <td
+                            style={{
+                              width: columnWidths.aging,
+                              minWidth: columnWidths.aging,
+                              maxWidth: columnWidths.aging,
+                            }}
+                            className={`${rowPadding} text-center whitespace-nowrap truncate overflow-hidden`}
+                          >
                             {aging === '30+ Days' || c.status === 'credit_locked' ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200">
-                                <Lock className="w-2.5 h-2.5" /> 30+d (Locked)
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200 truncate max-w-full">
+                                <Lock className="w-2.5 h-2.5 shrink-0" /> <span className="truncate">30+d (Locked)</span>
                               </span>
                             ) : aging === '16-30 Days' || aging === '8-15 Days' ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                15d (Due)
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 truncate max-w-full">
+                                <span className="truncate">15d (Due)</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                7d (Normal)
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 truncate max-w-full">
+                                <span className="truncate">7d (Normal)</span>
                               </span>
                             )}
                           </td>
@@ -1725,19 +2099,26 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
 
                         {/* Column 10: Sync Status */}
                         {visibleColumns.sync && (
-                          <td className="p-3 text-center whitespace-nowrap">
+                          <td
+                            style={{
+                              width: columnWidths.sync,
+                              minWidth: columnWidths.sync,
+                              maxWidth: columnWidths.sync,
+                            }}
+                            className={`${rowPadding} text-center whitespace-nowrap truncate overflow-hidden`}
+                          >
                             <div
-                              className="flex items-center justify-center gap-1.5"
+                              className="flex items-center justify-center gap-1.5 truncate"
                               title={c.synced !== false ? 'Live Synced to Cloud DB' : 'Offline / Pending Sync'}
                             >
                               <span
-                                className={`w-2.5 h-2.5 rounded-full ${
+                                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                                   c.synced !== false
                                     ? 'bg-emerald-500 shadow-2xs shadow-emerald-400'
                                     : 'bg-amber-500 animate-pulse'
                                 }`}
                               />
-                              <span className="text-[10px] font-bold text-slate-500">
+                              <span className="text-[10px] font-bold text-slate-500 truncate">
                                 {c.synced !== false ? 'Synced' : 'Pending'}
                               </span>
                             </div>
@@ -1747,17 +2128,22 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                         {/* Column 11: Actions */}
                         {visibleColumns.actions && (
                           <td
-                            className="p-3 text-center whitespace-nowrap"
+                            style={{
+                              width: columnWidths.actions,
+                              minWidth: columnWidths.actions,
+                              maxWidth: columnWidths.actions,
+                            }}
+                            className={`${rowPadding} text-center whitespace-nowrap truncate overflow-hidden`}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="flex items-center justify-center gap-1.5">
+                            <div className="flex items-center justify-center gap-1 truncate">
                               {/* View Customer 360 / Ledger */}
                               <button
                                 onClick={() => {
                                   setSelectedCustomer(c);
                                   setInspectorTab('ledger');
                                 }}
-                                className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-800 transition-colors cursor-pointer border border-transparent hover:border-amber-300"
+                                className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-800 transition-colors cursor-pointer border border-transparent hover:border-amber-300 shrink-0"
                                 title="View Customer 360 / Ledger"
                               >
                                 <Eye className="w-3.5 h-3.5" />
@@ -1766,7 +2152,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                               {/* Edit Customer */}
                               <button
                                 onClick={() => openEditModal(c)}
-                                className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer border border-transparent hover:border-blue-300"
+                                className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-700 transition-colors cursor-pointer border border-transparent hover:border-blue-300 shrink-0"
                                 title="Edit Customer Details"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
@@ -1776,7 +2162,7 @@ export const DesktopCustomer360: React.FC<DesktopCustomer360Props> = ({
                               {onDeleteCustomer && (
                                 <button
                                   onClick={() => setCustomerToDelete(c)}
-                                  className="p-1.5 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer border border-transparent hover:border-rose-300"
+                                  className="p-1.5 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer border border-transparent hover:border-rose-300 shrink-0"
                                   title="Delete Customer"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
