@@ -17,6 +17,7 @@ import {
   Clock,
   Lock,
   Package,
+  ChevronDown,
 } from 'lucide-react';
 import { Customer, Order, OrderItem, Product, SalesRoute, RouteStop, ZeroSaleCall, UserAccount } from '../../types';
 import { calculateOrderItem, formatPKR, formatAmount, formatRate } from '../../utils/calculations';
@@ -130,6 +131,255 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
   const selectedCustomer = useMemo(() => {
     return customers.find((c) => c.id === selectedCustomerId);
   }, [customers, selectedCustomerId]);
+
+  // Stable sequence mapping for all customers
+  const customerSeqMap = useMemo(() => {
+    const map = new Map<string, number>();
+    customers.forEach((c, idx) => {
+      map.set(c.id, extractShopSequence(c, idx));
+    });
+    return map;
+  }, [customers]);
+
+  const currentSelectedSeq = useMemo(() => {
+    if (!selectedCustomer) return 1;
+    return customerSeqMap.get(selectedCustomer.id) ?? extractShopSequence(selectedCustomer);
+  }, [selectedCustomer, customerSeqMap]);
+
+  // Smart Searchable Shop Picker State
+  const [isShopPickerOpen, setIsShopPickerOpen] = useState(false);
+  const [shopSearchQuery, setShopSearchQuery] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const shopPickerRef = React.useRef<HTMLDivElement>(null);
+  const shopInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Close dropdown when tapping outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (shopPickerRef.current && !shopPickerRef.current.contains(event.target as Node)) {
+        setIsShopPickerOpen(false);
+        setShopSearchQuery('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  // Filtered & ranked shops for the combobox
+  const searchedShops = useMemo(() => {
+    const q = shopSearchQuery.trim().toLowerCase();
+
+    const getDetails = (c: Customer, inRoute: boolean) => {
+      const seq = customerSeqMap.get(c.id) ?? extractShopSequence(c);
+      const shopName = c.shopName || c.shop_name || 'Unnamed Outlet';
+      const ownerName = c.owner_name || c.name || 'Proprietor';
+      return {
+        customer: c,
+        seq,
+        shopName,
+        ownerName,
+        inRoute,
+      };
+    };
+
+    const routeItems = routeCustomers.map((c) => getDetails(c, true));
+
+    if (!q) {
+      return routeItems;
+    }
+
+    const otherCustomers = customers.filter(
+      (c) => !routeCustomers.some((rc) => rc.id === c.id)
+    );
+    const otherItems = otherCustomers.map((c) => getDetails(c, false));
+    const allItems = [...routeItems, ...otherItems];
+
+    // Filter matches
+    const filtered = allItems.filter((item) => {
+      const seqStr = item.seq.toString();
+      const shopLower = item.shopName.toLowerCase();
+      const ownerLower = item.ownerName.toLowerCase();
+      const routeLower = (item.customer.route || '').toLowerCase();
+
+      // Check numeric match: "1", "25", "#25", "shop 25", "shop #25"
+      if (
+        seqStr === q ||
+        `#${seqStr}` === q ||
+        `shop #${seqStr}`.toLowerCase() === q ||
+        `shop ${seqStr}`.toLowerCase() === q
+      ) {
+        return true;
+      }
+      if (seqStr.startsWith(q) || seqStr.includes(q)) {
+        return true;
+      }
+      // Check shop name
+      if (shopLower.includes(q)) {
+        return true;
+      }
+      // Check owner name
+      if (ownerLower.includes(q)) {
+        return true;
+      }
+      // Check route
+      if (routeLower.includes(q)) {
+        return true;
+      }
+      return false;
+    });
+
+    // Score & sort:
+    return filtered.sort((a, b) => {
+      const aSeqStr = a.seq.toString();
+      const bSeqStr = b.seq.toString();
+      const aShopLower = a.shopName.toLowerCase();
+      const bShopLower = b.shopName.toLowerCase();
+      const aOwnerLower = a.ownerName.toLowerCase();
+      const bOwnerLower = b.ownerName.toLowerCase();
+
+      // 1. Exact shop number match takes absolute highest priority:
+      // "1" -> Shop #1, "25" -> Shop #25
+      const aExactSeq = aSeqStr === q || `#${aSeqStr}` === q || `shop #${aSeqStr}` === q;
+      const bExactSeq = bSeqStr === q || `#${bSeqStr}` === q || `shop #${bSeqStr}` === q;
+      if (aExactSeq && !bExactSeq) return -1;
+      if (!aExactSeq && bExactSeq) return 1;
+
+      // 2. In-route customers first
+      if (a.inRoute && !b.inRoute) return -1;
+      if (!a.inRoute && b.inRoute) return 1;
+
+      // 3. Shop number prefix match ("2" -> 2, 20, 21...)
+      const aSeqPrefix = aSeqStr.startsWith(q);
+      const bSeqPrefix = bSeqStr.startsWith(q);
+      if (aSeqPrefix && !bSeqPrefix) return -1;
+      if (!aSeqPrefix && bSeqPrefix) return 1;
+
+      // 4. Shop name starts with query ("Zee" -> Zeeshan Enterprises)
+      const aShopPrefix = aShopLower.startsWith(q);
+      const bShopPrefix = bShopLower.startsWith(q);
+      if (aShopPrefix && !bShopPrefix) return -1;
+      if (!aShopPrefix && bShopPrefix) return 1;
+
+      // 5. Owner name starts with query ("Bakhtmand" -> Bakhtmand)
+      const aOwnerPrefix = aOwnerLower.startsWith(q);
+      const bOwnerPrefix = bOwnerLower.startsWith(q);
+      if (aOwnerPrefix && !bOwnerPrefix) return -1;
+      if (!aOwnerPrefix && bOwnerPrefix) return 1;
+
+      // 6. Shop name includes query
+      const aShopSub = aShopLower.includes(q);
+      const bShopSub = bShopLower.includes(q);
+      if (aShopSub && !bShopSub) return -1;
+      if (!aShopSub && bShopSub) return 1;
+
+      // 7. Owner name includes query
+      const aOwnerSub = aOwnerLower.includes(q);
+      const bOwnerSub = bOwnerLower.includes(q);
+      if (aOwnerSub && !bOwnerSub) return -1;
+      if (!aOwnerSub && bOwnerSub) return 1;
+
+      return a.seq - b.seq;
+    });
+  }, [shopSearchQuery, routeCustomers, customers, customerSeqMap]);
+
+  // Reset highlight index when results change
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [shopSearchQuery, isShopPickerOpen]);
+
+  const handleSelectCustomer = (c: Customer) => {
+    setSelectedCustomerId(c.id);
+    if (c.route && c.route !== selectedRouteName) {
+      setSelectedRouteName(c.route);
+    }
+    setShopSearchQuery('');
+    setIsShopPickerOpen(false);
+  };
+
+  const handleClearShopSearch = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShopSearchQuery('');
+    setIsShopPickerOpen(true);
+    if (shopInputRef.current) {
+      shopInputRef.current.focus();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isShopPickerOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setIsShopPickerOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (searchedShops.length > 0 ? (prev + 1) % searchedShops.length : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) =>
+        searchedShops.length > 0 ? (prev - 1 + searchedShops.length) % searchedShops.length : 0
+      );
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (searchedShops.length > 0 && searchedShops[highlightedIndex]) {
+        handleSelectCustomer(searchedShops[highlightedIndex].customer);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsShopPickerOpen(false);
+      setShopSearchQuery('');
+    }
+  };
+
+  const renderHighlightedText = (text: string, query: string) => {
+    if (!query || !query.trim()) {
+      return <span>{text}</span>;
+    }
+    const tokens = query.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return <span>{text}</span>;
+
+    const escapedTokens = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const regex = new RegExp(`(${escapedTokens.join('|')})`, 'gi');
+    const parts = text.split(regex);
+
+    return (
+      <span>
+        {parts.map((part, idx) => {
+          const isMatch = tokens.some((t) => t.toLowerCase() === part.toLowerCase());
+          if (isMatch) {
+            return (
+              <span
+                key={idx}
+                className="font-black text-amber-300 bg-amber-500/30 px-1 py-0.5 rounded shadow-2xs"
+              >
+                {part}
+              </span>
+            );
+          }
+          return <span key={idx}>{part}</span>;
+        })}
+      </span>
+    );
+  };
+
+  const inputDisplayValue = isShopPickerOpen
+    ? shopSearchQuery
+    : selectedCustomer
+    ? `Shop #${currentSelectedSeq} • ${selectedCustomer.shopName} (Proprietor: ${
+        selectedCustomer.owner_name || selectedCustomer.name
+      })`
+    : '';
+
+  const inputPlaceholderText = selectedCustomer
+    ? `Shop #${currentSelectedSeq} • ${selectedCustomer.shopName} (Type #, Name, Owner...)`
+    : 'Search by shop #, name, or owner...';
 
   // Zero-Sale Call state
   const [showZeroSaleModal, setShowZeroSaleModal] = useState<boolean>(false);
@@ -377,7 +627,7 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
       )}
 
       {/* Route & Shop Selector Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm text-white w-full">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm text-white w-full relative z-30">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {/* Route Selector */}
           <div>
@@ -405,12 +655,17 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
             </select>
           </div>
 
-          {/* Shop Selector */}
-          <div>
+          {/* Shop Selector - Smart Searchable Combobox */}
+          <div className="relative" ref={shopPickerRef}>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 <Store className="w-3.5 h-3.5 text-emerald-400" />
                 Drop Sequence (Shops)
+                {routeCustomers.length > 0 && (
+                  <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
+                    {routeCustomers.length}
+                  </span>
+                )}
               </label>
               <button
                 type="button"
@@ -421,21 +676,169 @@ export const MobileOrderBooking: React.FC<MobileOrderBookingProps> = ({
                 Log Zero-Sale
               </button>
             </div>
-            <select
-              value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="w-full min-h-[48px] h-12 bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
-            >
-              {routeCustomers.length === 0 ? (
-                <option value="">No outlets found on this route</option>
-              ) : (
-                routeCustomers.map((c, idx) => (
-                  <option key={c.id} value={c.id}>
-                    Shop #{extractShopSequence(c, idx)}: {c.shopName} ({c.name})
-                  </option>
-                ))
-              )}
-            </select>
+
+            {/* Combobox Trigger / Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-400 pointer-events-none z-10" />
+              <input
+                ref={shopInputRef}
+                type="text"
+                value={inputDisplayValue}
+                onChange={(e) => {
+                  setShopSearchQuery(e.target.value);
+                  setIsShopPickerOpen(true);
+                }}
+                onFocus={() => {
+                  setIsShopPickerOpen(true);
+                }}
+                onClick={() => {
+                  setIsShopPickerOpen(true);
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder={inputPlaceholderText}
+                className="w-full min-h-[48px] h-12 bg-slate-800 border border-slate-700 hover:border-slate-600 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-white rounded-xl pl-10 pr-20 py-2.5 text-xs sm:text-sm font-semibold truncate placeholder:text-slate-500 cursor-pointer focus:cursor-text transition-all duration-150 shadow-inner"
+              />
+
+              {/* Right Controls: Quick Clear ✕ + Chevron */}
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
+                {(shopSearchQuery.length > 0 || isShopPickerOpen) && (
+                  <button
+                    type="button"
+                    onClick={handleClearShopSearch}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/80 rounded-lg transition-colors cursor-pointer"
+                    title="Clear search & view full route sequence"
+                  >
+                    <X className="w-4 h-4 text-slate-400 hover:text-amber-400" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsShopPickerOpen((prev) => !prev);
+                    if (!isShopPickerOpen && shopInputRef.current) {
+                      shopInputRef.current.focus();
+                    }
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/80 rounded-lg transition-colors cursor-pointer"
+                  title="Toggle shop sequence list"
+                >
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform duration-200 ${
+                      isShopPickerOpen ? 'rotate-180 text-amber-400' : 'text-slate-400'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Floating Dropdown List (z-50) */}
+            {isShopPickerOpen && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-72 sm:max-h-80 animate-in fade-in zoom-in-95 duration-100">
+                {/* Header inside dropdown */}
+                <div className="p-2.5 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between text-[11px] shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <Store className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="font-bold text-slate-300 uppercase tracking-wider">
+                      {shopSearchQuery.trim()
+                        ? `${searchedShops.length} Found for "${shopSearchQuery}"`
+                        : `Route Drop Sequence (${searchedShops.length} Shops)`}
+                    </span>
+                  </div>
+                  {shopSearchQuery.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleClearShopSearch}
+                      className="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer text-[10px]"
+                    >
+                      Show Full Route
+                    </button>
+                  )}
+                </div>
+
+                {/* Scrollable Shop List */}
+                <div className="overflow-y-auto divide-y divide-slate-800 flex-1">
+                  {searchedShops.length === 0 ? (
+                    <div className="p-5 text-center text-xs text-slate-400 space-y-2">
+                      <p className="font-bold text-slate-200 text-sm">No Matching Outlets Found</p>
+                      <p className="text-[11px] text-slate-400">
+                        No shop matching "{shopSearchQuery}" on this beat.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleClearShopSearch}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer shadow-sm"
+                      >
+                        Reset Route Sequence
+                      </button>
+                    </div>
+                  ) : (
+                    searchedShops.map((item, idx) => {
+                      const isSelected = item.customer.id === selectedCustomerId;
+                      const isHighlighted = idx === highlightedIndex;
+
+                      return (
+                        <button
+                          key={item.customer.id}
+                          type="button"
+                          onClick={() => handleSelectCustomer(item.customer)}
+                          onMouseEnter={() => setHighlightedIndex(idx)}
+                          className={`w-full text-left p-3 transition-colors flex items-center justify-between gap-3 cursor-pointer ${
+                            isSelected
+                              ? 'bg-amber-500/15 border-l-4 border-amber-400'
+                              : isHighlighted
+                              ? 'bg-slate-800 border-l-4 border-amber-500/50'
+                              : 'hover:bg-slate-800/60 border-l-4 border-transparent'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            {/* Main Line: Shop #[ID] • [Shop Name] (Proprietor: [Owner]) */}
+                            <div className="text-xs sm:text-sm font-bold text-white tracking-wide truncate">
+                              {renderHighlightedText(
+                                `Shop #${item.seq} • ${item.shopName} (Proprietor: ${item.ownerName})`,
+                                shopSearchQuery
+                              )}
+                            </div>
+
+                            {/* Secondary Row: Debt / Credit Limit Badges */}
+                            <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400 font-medium">
+                              <span className="font-mono text-amber-400 font-bold whitespace-nowrap">
+                                Due: {formatAmount(item.customer.currentBalance)}
+                              </span>
+                              <span className="text-slate-600">•</span>
+                              <span className="font-mono text-slate-300 whitespace-nowrap">
+                                Limit: {formatAmount(item.customer.creditLimit)}
+                              </span>
+                              {!item.inRoute && (
+                                <>
+                                  <span className="text-slate-600">•</span>
+                                  <span className="text-[10px] font-bold text-amber-300 bg-amber-950/80 border border-amber-800/80 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                    Beat: {item.customer.route}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right Badge / Status */}
+                          <div className="shrink-0 flex items-center gap-1.5">
+                            {isSelected ? (
+                              <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/30">
+                                <CheckCircle className="w-3.5 h-3.5 text-amber-400" />
+                                <span className="hidden sm:inline">Active</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700/60">
+                                Stop #{item.seq}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
